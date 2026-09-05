@@ -1,0 +1,23 @@
+@font-face {
+  font-family: 'Manrope';
+  font-style: normal;
+  font-weight: 200 800;
+  font-display: swap;
+  src: url('@fontsource-variable/manrope/files/manrope-latin-wght-normal.woff2')
+    format('woff2');
+}
+
+html {
+  color-scheme: light dark;
+  background: var(--color-bg);
+  color: var(--color-text);
+  font-family: var(--font-family);
+  font-size: var(--font-size-body);
+  line-height: var(--line-height-body);
+  font-variant-numeric: tabular-nums;
+}
+
+body {
+  margin: 0;
+  min-width: 280px;
+}
