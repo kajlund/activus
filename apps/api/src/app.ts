@@ -1,5 +1,8 @@
 import { randomUUID } from 'node:crypto';
 import { HealthResponseSchema } from '@activus/contracts';
+import type { ActivityRepository } from './modules/activities/model.js';
+import { ActivityService } from './modules/activities/service.js';
+import { activityRoutes } from './modules/activities/routes.js';
 import { Hono } from 'hono';
 import { cors } from 'hono/cors';
 import { pino, type Logger } from 'pino';
@@ -26,6 +29,7 @@ export function createApp(
     activityKinds?: ActivityKindRepository;
     variants?: VariantRepository;
     measurements?: MeasurementRepository;
+    activities?: ActivityRepository;
   } = {},
 ) {
   const app = new Hono<{ Variables: { requestId: string } }>();
@@ -47,11 +51,18 @@ export function createApp(
       'Request completed',
     );
   });
+  
   app.use('/api/*', cors({ origin: config.WEB_ORIGIN }));
 
-  app.get('/api/health', (c) =>
+  app.get('/health', (c) =>
     c.json(HealthResponseSchema.parse({ status: 'ok' })),
   );
+
+  if (dependencies.activities)
+    app.route(
+      '/api/v1/activities',
+      activityRoutes(new ActivityService(dependencies.activities)),
+    );
 
   if (dependencies.activityKinds) {
     app.route(
@@ -116,6 +127,7 @@ export function createApp(
           error: {
             code: error.code,
             message: error.message,
+            ...(error.details ? { details: error.details } : {}),
             requestId: c.get('requestId'),
           },
         },

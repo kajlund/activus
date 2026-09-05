@@ -1,6 +1,11 @@
 import { ApiError } from '../errors.js';
 
 const constraints: Record<string, [400 | 404 | 409, string, string]> = {
+  configuration_measurement_has_history: [
+    409,
+    'MEASUREMENT_DEFINITION_HAS_HISTORY',
+    'Archive and replace a definition to change its recorded meaning',
+  ],
   activity_variants_name_unique: [
     409,
     'ACTIVITY_VARIANT_NAME_CONFLICT',

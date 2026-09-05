@@ -17,6 +17,9 @@ import {
   uuid,
   boolean,
   doublePrecision,
+  date,
+  bigint,
+  numeric,
   foreignKey,
   unique,
   type AnyPgColumn,
@@ -82,6 +85,125 @@ const literals = (values: readonly string[]) =>
     values.map((value) => sql.raw(`'${value}'`)),
     sql`, `,
   );
+
+export const activities = pgTable(
+  'activities',
+  {
+    id: uuid('id').defaultRandom().primaryKey(),
+    activityKindId: uuid('activity_kind_id')
+      .notNull()
+      .references(() => activityKinds.id, { onDelete: 'restrict' }),
+    activityVariantId: uuid('activity_variant_id'),
+    activityDate: date('activity_date', { mode: 'string' }).notNull(),
+    startedAt: timestamp('started_at', { withTimezone: true, mode: 'date' }),
+    durationSeconds: bigint('duration_seconds', { mode: 'number' }),
+    name: text('name'),
+    notes: text('notes'),
+    effort: integer('effort'),
+    feeling: integer('feeling'),
+    isPartial: boolean('is_partial').default(false).notNull(),
+    source: text('source'),
+    sourceExternalId: text('source_external_id'),
+    createdAt: timestamp('created_at', { withTimezone: true, mode: 'date' })
+      .defaultNow()
+      .notNull(),
+    updatedAt: timestamp('updated_at', { withTimezone: true, mode: 'date' })
+      .defaultNow()
+      .notNull(),
+  },
+  (t) => [
+    foreignKey({
+      name: 'activities_variant_kind_fk',
+      columns: [t.activityVariantId, t.activityKindId],
+      foreignColumns: [activityVariants.id, activityVariants.activityKindId],
+    }).onDelete('restrict'),
+    check(
+      'activities_date_valid',
+      sql`${t.activityDate} BETWEEN DATE '0001-01-01' AND DATE '9999-12-31'`,
+    ),
+    check(
+      'activities_duration_valid',
+      sql`${t.durationSeconds} BETWEEN 0 AND 9007199254740991`,
+    ),
+    check('activities_effort_valid', sql`${t.effort} BETWEEN 1 AND 5`),
+    check('activities_feeling_valid', sql`${t.feeling} BETWEEN 1 AND 5`),
+    check(
+      'activities_name_valid',
+      sql`${t.name} IS NULL OR (char_length(${t.name}) BETWEEN 1 AND 200 AND ${t.name} = btrim(${t.name}, ${trimCharacters}))`,
+    ),
+    check(
+      'activities_notes_valid',
+      sql`${t.notes} IS NULL OR (char_length(${t.notes}) BETWEEN 1 AND 10000 AND ${t.notes} = btrim(${t.notes}, ${trimCharacters}))`,
+    ),
+    check(
+      'activities_source_pair_valid',
+      sql`(${t.source} IS NULL AND ${t.sourceExternalId} IS NULL) OR (${t.source} IS NOT NULL AND ${t.sourceExternalId} IS NOT NULL AND length(btrim(${t.source})) > 0 AND length(btrim(${t.sourceExternalId})) > 0)`,
+    ),
+    uniqueIndex('activities_source_unique')
+      .on(t.source, t.sourceExternalId)
+      .where(sql`${t.source} IS NOT NULL`),
+    index('activities_journal_idx').on(
+      t.activityDate.desc(),
+      sql`${t.startedAt} DESC NULLS LAST`,
+      t.createdAt.desc(),
+      t.id.desc(),
+    ),
+    index('activities_kind_date_idx').on(
+      t.activityKindId,
+      t.activityDate.desc(),
+    ),
+    index('activities_variant_date_idx').on(
+      t.activityVariantId,
+      t.activityDate.desc(),
+    ),
+  ],
+);
+
+export const activityMeasurements = pgTable(
+  'activity_measurements',
+  {
+    id: uuid('id').defaultRandom().primaryKey(),
+    activityId: uuid('activity_id')
+      .notNull()
+      .references(() => activities.id, { onDelete: 'cascade' }),
+    measurementDefinitionId: uuid('measurement_definition_id')
+      .notNull()
+      .references(() => measurementDefinitions.id, { onDelete: 'restrict' }),
+    numericValue: numeric('numeric_value'),
+    integerValue: bigint('integer_value', { mode: 'number' }),
+    booleanValue: boolean('boolean_value'),
+    textValue: text('text_value'),
+    createdAt: timestamp('created_at', { withTimezone: true, mode: 'date' })
+      .defaultNow()
+      .notNull(),
+    updatedAt: timestamp('updated_at', { withTimezone: true, mode: 'date' })
+      .defaultNow()
+      .notNull(),
+  },
+  (t) => [
+    unique('activity_measurements_activity_definition_unique').on(
+      t.activityId,
+      t.measurementDefinitionId,
+    ),
+    index('activity_measurements_definition_idx').on(t.measurementDefinitionId),
+    check(
+      'activity_measurements_one_value',
+      sql`num_nonnulls(${t.numericValue}, ${t.integerValue}, ${t.booleanValue}, ${t.textValue}) = 1`,
+    ),
+    check(
+      'activity_measurements_numeric_valid',
+      sql`${t.numericValue} BETWEEN -9007199254740991 AND 9007199254740991 AND scale(${t.numericValue}) <= 6`,
+    ),
+    check(
+      'activity_measurements_integer_valid',
+      sql`${t.integerValue} BETWEEN -9007199254740991 AND 9007199254740991`,
+    ),
+    check(
+      'activity_measurements_text_valid',
+      sql`${t.textValue} IS NULL OR (char_length(${t.textValue}) BETWEEN 1 AND 500 AND ${t.textValue} = btrim(${t.textValue}, ${trimCharacters}))`,
+    ),
+  ],
+);
 
 export const activityVariants = pgTable(
   'activity_variants',

@@ -1,6 +1,6 @@
 # Activus
 
-Activus training journal, through phase 2B: the phase 1 web shell plus PostgreSQL persistence and REST endpoints for activity kinds, variants, measurement definitions, and primary measurement selection. Design and architecture are defined in `.doc/visual-design.md` and `.doc/technical-architecture.md`.
+Activus training journal, through phase 2C: the phase 1 web shell plus PostgreSQL configuration and activity APIs, typed measurement values, filtering, and pagination. Design and architecture are defined in `.doc/visual-design.md` and `.doc/technical-architecture.md`.
 
 ## Setup
 
@@ -53,6 +53,9 @@ apps/api/src/
                      Feature schemas, services, repositories, routes and tests
   modules/measurement-units/
                      Explicit metadata registry and conversion helpers
+  modules/activities/
+                     Contracts validation, exact decimal arithmetic, service,
+                     transactional repository, mappers, routes and unit tests
   app.ts              Hono construction, health, logging, errors
   server.ts           Environment loading, startup, shutdown
 apps/api/test/        Foundation tests, test support, guarded PostgreSQL tests
@@ -63,7 +66,7 @@ apps/web/
   src/app-shell.ts    Responsive navigation and placeholder content
   src/styles/        Approved tokens and local font foundation
   test/              Shell navigation and keyboard focus tests
-packages/contracts/  Health, configuration, unit and error transport schemas/types
+packages/contracts/  Health, configuration, activity, unit and error contracts
 scripts/import/      Reserved for the future JSON importer
 drizzle/             Generated SQL migrations and snapshots
 ```
@@ -144,13 +147,81 @@ Combination rules live in the focused domain validator and are also protected by
 | rating        | Null units/precision; exactly 1–5 or 1–10                                                                      | average, latest, minimum, none / all three    |
 | boolean, text | Null units, precision and bounds                                                                               | none / none                                   |
 
-All bounds are finite numbers within ±`Number.MAX_SAFE_INTEGER`, stored as PostgreSQL double precision configuration bounds; minimum cannot exceed maximum. Irrelevant settings are rejected. Text is intended for short structured values; activity notes and measurement values are outside this phase.
+All definition bounds are finite numbers within ±`Number.MAX_SAFE_INTEGER`, stored as PostgreSQL double precision configuration bounds; minimum cannot exceed maximum. Irrelevant settings are rejected. Text is intended for short structured values. Activity values use the exact storage described below.
 
 The explicit registry supports metres, kilometres, miles, feet, seconds, minutes, hours/minutes, kilograms, pounds and count, with stable singular IDs, labels, symbols, dimensions, canonical units, conversion factors and default precision. Metres, seconds, kilograms and count are canonical. Unitless numeric definitions use null/null. `hour-minute` is a presentation of canonical seconds, not a fractional-hour conversion. Conversion helpers reject non-finite inputs/results; no unrestricted conversion framework is introduced.
 
 Kinds expose nullable `primaryMeasurementDefinitionId`. Select or clear it through the existing kind PATCH endpoint. A primary must be an active, same-kind parent definition of decimal, integer, duration or rating type. Archiving it or changing it to an unsuitable type returns a conflict until the primary is cleared or replaced. Database triggers protect these rules under concurrent and direct writes.
 
 Constrained text columns use shared TypeScript constants and PostgreSQL checks because no safe enum-migration policy is established. Partial unique indexes handle null parent ownership and one active default; a composite foreign key enforces variant/kind ownership. Cross-scope naming and primary guards serialize writes through the owning kind. Serialization/deadlock conflicts return `409 CONFIGURATION_WRITE_CONFLICT` and may be retried. All configuration foreign keys use restrictive deletion. See [migration notes](drizzle/README.md).
+
+## Phase 2C activities
+
+| Method | Path                     | Behaviour                                                             |
+| ------ | ------------------------ | --------------------------------------------------------------------- |
+| POST   | `/api/v1/activities`     | Create common fields and all values atomically; `201` plus `Location` |
+| GET    | `/api/v1/activities/:id` | Complete detail, including archived configuration; `200`              |
+| GET    | `/api/v1/activities`     | Filtered, paginated journal summaries; `200`                          |
+| PATCH  | `/api/v1/activities/:id` | Partial common-field update or explicit value replacement; `200`      |
+| DELETE | `/api/v1/activities/:id` | Permanent deletion of activity and its owned values; `204`            |
+
+Missing activities return `404 ACTIVITY_NOT_FOUND`, including repeated deletion. There is no trash or undo. No activity UI or browser workflow is introduced in this phase.
+
+Create requires `activityKindId`, `activityDate`, and a `measurements` array (possibly empty). Optional common fields are `activityVariantId`, `startedAt`, `durationSeconds`, `name`, `notes`, `effort`, `feeling`, and `isPartial`. Nullable fields default to null; `isPartial` defaults to false. No default variant is silently selected. Source identity fields are reserved and rejected with `ACTIVITY_SOURCE_IDENTITY_FORBIDDEN`.
+
+```json
+{
+  "activityKindId": "<existing kind UUID>",
+  "activityDate": "2024-02-29",
+  "durationSeconds": 3600,
+  "measurements": [
+    {
+      "measurementDefinitionId": "<existing distance definition UUID>",
+      "valueType": "decimal",
+      "value": "1.25",
+      "unitId": "kilometre"
+    }
+  ]
+}
+```
+
+Replace the placeholders with existing IDs. Decimal/integer inputs may specify a supported compatible unit; omission means canonical units. Duration inputs require `unitId: "second"`. Rating, Boolean and text inputs do not accept units. Measurement arrays are limited to 200 entries and reject duplicate definition IDs.
+
+### Common fields and duration
+
+`activityDate` is a validated `YYYY-MM-DD` string (years 0001–9999) and PostgreSQL `date`; it never passes through a JavaScript Date. `startedAt` is an independent optional instant, accepts offsets and up to millisecond precision, and returns UTC. It never changes the journal date. Overall `durationSeconds` is a nonnegative safe integer stored directly on the activity. Additional duration definitions mean moving/rest/interval times only; no common-duration definition or duplicated value is created. A primary definition always denotes a kind-specific measurement.
+
+Name and notes are trimmed, with empty strings stored as null; limits are 200 and 10,000 characters. Effort and feeling use nullable integer ratings 1–5. The documents did not specify their numeric scales, so this uses the existing small-rating convention without inventing qualitative labels.
+
+### Exact numbers and typed values
+
+Decimal values use PostgreSQL `numeric` without a rounding typmod, plus checks limiting canonical scale to six and magnitude to `Number.MAX_SAFE_INTEGER`. Definition precision (0–6) applies to **canonical values after conversion**. Values that do not fit are rejected, never silently rounded. For example, one mile is exactly `1609.344` metres and needs precision 3 or greater. One pound produces `0.45359237` kilograms and exceeds the supported canonical scale; 100 pounds produces `45.359237` and fits precision 6. This is a deliberately bounded registry, not unrestricted conversion or approximate persistence.
+
+Use plain decimal strings for exact input. Strings reject exponents, whitespace, leading plus signs, leading zeroes, separators and unit suffixes; the input boundary is at most 48 characters and 24 fractional digits before conversion. Trailing zeroes are normalized. Number inputs mean JavaScript's shortest decimal representation of that number; precision already lost before transmission cannot be recovered. Conversion multiplies base-ten integer coefficients using the registry's explicit factors. Existing floating-point unit helpers are not used for persistence.
+
+Canonical decimal responses are strings. Integers, additional durations and ratings use safe integers backed by `bigint`; Booleans and text use their own columns. Exactly one column must be present, with one row per activity/definition. Text is trimmed and limited to 500 characters; empty text omits or removes its value. False and zero remain real values.
+
+Each returned measurement includes definition ID/name, type, archived state, inherited/variant-specific source, canonical value/unit and display value/unit. Display numeric values are plain decimal strings rounded half away from zero to the configured precision or unit default. They are presentation values, not exact canonical replacements. `hour-minute` display values remain seconds for the future formatter. Detail orders parent definitions first, then variant definitions, then configured order, name with `C` collation, and definition ID.
+
+### Completeness, editing and history
+
+Every active required effective definition must have a value unless `isPartial: true` is explicit. Partial records still validate all supplied values, ownership, active parent selection and dates. Age never implies partial status. If configuration adds new requirements, a later edit must supply them or explicitly mark the entry partial.
+
+PATCH must be nonempty. Omitted common fields and omitted `measurements` are preserved. A supplied measurement array is the **complete desired set**; `[]` removes all values only when completeness permits it. Changing kind or variant requires that array explicitly. Missing or incompatible replacement sets return `409` with `error.details.incompatibleDefinitionIds`; missing required values return `400` with `missingDefinitionIds`. No incompatible values are silently discarded or retained. There is no definition-ID remapping between kinds.
+
+Existing archived kinds/variants remain readable and their activity common fields can be corrected. Moving an activity requires active resulting configuration. Existing archived-definition values may be corrected or explicitly removed, but new archived-definition values cannot be added. Restoring configuration never rewrites values. Once values reference a definition, its type, canonical unit, precision and bounds cannot change; archive and replace it instead (`409 MEASUREMENT_DEFINITION_HAS_HISTORY`). Names, display units and other non-storage metadata remain editable. This is the small phase 2B compatibility extension required once history exists.
+
+ActivityService centrally checks definition effectiveness, type, units, ranges, required values and historical-editing rules inside the repository transaction. PostgreSQL checks cannot compare a value to another table's definition: arbitrary direct SQL can bypass these domain rules, so future importers must use this same service. The database still enforces typed-column presence, safe numeric bounds, ownership foreign keys and unique pairs. A focused configuration trigger prevents reinterpretation of stored history, following phase 2B's existing trigger convention; there is no opaque value-validation trigger.
+
+PATCH locks the activity before reading and merging it, then locks relevant kind rows in UUID order to coordinate with configuration writes. Creation takes the same kind lock. Reads use a repeatable-read snapshot for consistent common fields and values. Replacement upserts retained values and deletes only omitted ones, inside the same transaction. Failures roll back both common fields and measurements.
+
+### Filters and pagination
+
+Lists accept inclusive `dateFrom`/`dateTo`, `activityKindId`, `activityVariantId`, `isPartial=true|false`, literal case-insensitive `search` over name/notes (1–200 characters), `limit` (default 25, maximum 100) and `offset` (default 0, maximum 1,000,000). Reversed dates, repeated/unknown parameters and arbitrary ordering are rejected. A variant filter resolves its owning kind; a supplied incompatible kind returns an error. Search is parameterized and escapes SQL wildcard characters.
+
+Ordering is journal date descending, start time descending with nulls last, creation time descending, then UUID descending. Summary responses expose kind/variant metadata, duration, selected primary value when recorded, duration fallback when no primary value is available, partial status and `hasNotes`, never full notes. No unrelated measurement is guessed as a fallback.
+
+Pagination returns `limit`, `offset`, `hasMore` and nullable `nextOffset`. The repository fetches one extra row instead of an expensive total count. It batch-loads measurements in one additional query, avoiding N+1 reads. Like other offset APIs, separate page requests can shift when concurrent inserts/deletes occur.
 
 ## Dedicated database tests
 
@@ -166,8 +237,8 @@ Set `TEST_DATABASE_URL=postgresql://activus_test:YOUR_PASSWORD@localhost:5432/ac
 
 Guards require a database named `activus_test` or `activus_test_...`, the role `activus_test`, no URL query overrides, non-production `NODE_ENV`, and a database name different from `DATABASE_URL` even when hostnames differ. The suite verifies the actual database/role and refuses superuser, database-creator or role-creator connections before migrating. It applies committed migrations only to this test database and removes only UUIDs it inserted; it never drops or truncates a database/schema/table. Without `TEST_DATABASE_URL`, the database suite reports explicit skips. An unsafe URL or a configured but unreachable database fails rather than silently skipping.
 
-## Deferred after phase 2B
+## Deferred after phase 2C
 
 Bulk reordering remains deferred: phase 2A did not establish a complete-list reorder pattern. Ordinary `sortOrder` edits remain available. Explicit inherited-definition overrides/hiding are deferred until their semantics are designed. Optional development seeds remain deferred; migrations contain no opinionated kinds.
 
-Activities, measurement values, goals, progress queries, tags, authentication, legacy import, and management UI are not implemented. Deployment, Docker and chart selection remain deferred. Phase 2C has not begun. No Git repository or Git configuration is initialized or changed.
+Goals, progress and personal-best calculations, tags, authentication, legacy import, activity UI and management UI are not implemented. Deployment, Docker and chart selection remain deferred. Phase 2D has not begun. No Git repository or Git configuration is initialized or changed.

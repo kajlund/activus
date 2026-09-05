@@ -22,6 +22,20 @@
       "when": 1788606191779,
       "tag": "0002_configuration_guards",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1788609197743,
+      "tag": "0003_activities",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1788609207594,
+      "tag": "0004_measurement_history",
+      "breakpoints": true
     }
   ]
 }
