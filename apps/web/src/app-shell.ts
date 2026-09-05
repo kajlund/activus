@@ -1,4 +1,6 @@
 import { LitElement, css, html } from 'lit';
+import { interceptNavigation } from './routes/navigation.js';
+import './features/activity-kinds/page.js';
 
 const destinations = [
   ['Overview', '/'],
@@ -10,6 +12,13 @@ const destinations = [
 ] as const;
 
 export class ActivusApp extends LitElement {
+  static override properties = { location: { state: true } };
+  private location = window.location.pathname + window.location.search;
+  private readonly onLocation = () => {
+    this.location = window.location.pathname + window.location.search;
+    const drawer = this.renderRoot.querySelector('details'); if (drawer && !this.desktop?.matches) drawer.open = false;
+    void this.updateComplete.then(() => this.renderRoot.querySelector<HTMLElement>('main')?.focus());
+  };
   private readonly desktop = window.matchMedia?.('(min-width: 769px)');
   private readonly syncNavigation = () => {
     const drawer = this.renderRoot.querySelector('details');
@@ -19,11 +28,13 @@ export class ActivusApp extends LitElement {
   override connectedCallback() {
     super.connectedCallback();
     this.desktop?.addEventListener('change', this.syncNavigation);
+    window.addEventListener('popstate', this.onLocation);
     this.syncNavigation();
   }
 
   override disconnectedCallback() {
     this.desktop?.removeEventListener('change', this.syncNavigation);
+    window.removeEventListener('popstate', this.onLocation);
     super.disconnectedCallback();
   }
 
@@ -120,6 +131,7 @@ export class ActivusApp extends LitElement {
     }
     main {
       padding: var(--space-7);
+      min-width: 0;
     }
     h1 {
       margin: 0 0 var(--space-5);
@@ -177,12 +189,12 @@ export class ActivusApp extends LitElement {
   }
 
   override render() {
-    const current = destinations.find(
-      ([, path]) => path === window.location.pathname,
-    );
+    const pathname = new URL(this.location, window.location.origin).pathname;
+    const isKinds = pathname === '/activity-kinds' || pathname.startsWith('/activity-kinds/');
+    const current = destinations.find(([, path]) => path === pathname);
     return html`
       <a class="skip" href="#main" @click=${this.skipToMain}>Skip to content</a>
-      <div class="shell">
+      <div class="shell" @click=${interceptNavigation}>
         <aside>
           <a class="brand" href="/" aria-label="Activus home"
             ><img src="/icons/activus.svg" alt="" width="48" height="48" /><span
@@ -193,14 +205,13 @@ export class ActivusApp extends LitElement {
             <summary>Navigation</summary>
             <nav aria-label="Primary">
               <ul>
-                ${destinations.map(([label, path]) => html`<li><a href=${path} aria-current=${window.location.pathname === path ? 'page' : 'false'}>${label}</a></li>`)}
+                ${destinations.map(([label, path]) => html`<li><a href=${path} aria-current=${(path === '/activity-kinds' ? isKinds : pathname === path) ? 'page' : 'false'}>${label}</a></li>`)}
               </ul>
             </nav>
           </details>
         </aside>
         <main id="main" tabindex="-1">
-          <h1>${current?.[0] ?? 'Activus'}</h1>
-          <p>This space is ready for your training journal.</p>
+          ${isKinds ? html`<activity-kinds-page .route=${this.location}></activity-kinds-page>` : html`<h1>${current?.[0] ?? 'Activus'}</h1><p>This space is ready for your training journal.</p>`}
         </main>
       </div>
     `;

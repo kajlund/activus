@@ -10,6 +10,7 @@ export default tseslint.config(
       '**/coverage/**',
       '.doc/**',
       '.vscode/**',
+      '.artifacts/**',
     ],
   },
   js.configs.recommended,

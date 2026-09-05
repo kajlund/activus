@@ -4,4 +4,7 @@ coverage
 pnpm-lock.yaml
 .doc
 .vscode
+.artifacts
+playwright-report
+test-results
 apps/web/public/icons/activus.svg
