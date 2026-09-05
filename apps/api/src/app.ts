@@ -4,10 +4,15 @@ import { Hono } from 'hono';
 import { cors } from 'hono/cors';
 import { pino, type Logger } from 'pino';
 import type { Config } from './config/env.js';
+import { ApiError } from './errors.js';
+import type { ActivityKindRepository } from './modules/activity-kinds/model.js';
+import { ActivityKindService } from './modules/activity-kinds/service.js';
+import { activityKindRoutes } from './modules/activity-kinds/routes.js';
 
 export function createApp(
   config: Config,
   logger: Logger = pino({ level: config.LOG_LEVEL }),
+  dependencies: { activityKinds?: ActivityKindRepository } = {},
 ) {
   const app = new Hono<{ Variables: { requestId: string } }>();
 
@@ -34,6 +39,13 @@ export function createApp(
     c.json(HealthResponseSchema.parse({ status: 'ok' })),
   );
 
+  if (dependencies.activityKinds) {
+    app.route(
+      '/api/v1/activity-kinds',
+      activityKindRoutes(new ActivityKindService(dependencies.activityKinds)),
+    );
+  }
+
   app.notFound((c) =>
     c.json(
       {
@@ -46,7 +58,23 @@ export function createApp(
       404,
     ),
   );
-  app.onError((_error, c) => {
+  app.onError((error, c) => {
+    if (error instanceof ApiError) {
+      logger.info(
+        { requestId: c.get('requestId'), code: error.code },
+        'Request rejected',
+      );
+      return c.json(
+        {
+          error: {
+            code: error.code,
+            message: error.message,
+            requestId: c.get('requestId'),
+          },
+        },
+        error.status,
+      );
+    }
     // Do not serialize arbitrary errors: their messages may contain private input.
     logger.error(
       { requestId: c.get('requestId'), code: 'INTERNAL_ERROR' },

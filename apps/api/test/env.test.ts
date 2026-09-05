@@ -1,8 +1,19 @@
 import { expect, it } from 'vitest';
-import { parseEnv } from '../src/config/env.js';
+import { parseEnv, requireDatabase } from '../src/config/env.js';
 
-it('allows startup without a database', () => {
+it('allows app-only tests without a database', () => {
   expect(parseEnv({}).DATABASE_URL).toBeUndefined();
+});
+
+it('requires a validated database URL for real startup', () => {
+  expect(() => requireDatabase(parseEnv({}))).toThrow(
+    'DATABASE_URL is required',
+  );
+  expect(
+    requireDatabase(
+      parseEnv({ DATABASE_URL: 'postgresql://localhost/activus' }),
+    ).DATABASE_URL,
+  ).toBe('postgresql://localhost/activus');
 });
 
 it.each([

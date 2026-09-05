@@ -13,7 +13,11 @@
     "test": "pnpm --filter @activus/contracts build && pnpm -r --if-present test",
     "lint": "eslint . --max-warnings 0",
     "format": "prettier --write .",
-    "format:check": "prettier --check ."
+    "format:check": "prettier --check .",
+    "db:generate": "pnpm --filter @activus/contracts build && pnpm --filter @activus/api db:generate",
+    "db:migrate": "pnpm --filter @activus/contracts build && pnpm --filter @activus/api db:migrate",
+    "db:check": "pnpm --filter @activus/api db:check",
+    "test:db": "pnpm --filter @activus/contracts build && pnpm --filter @activus/api test:db"
   },
   "devDependencies": {
     "@eslint/js": "10.0.1",

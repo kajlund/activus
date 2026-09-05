@@ -1,5 +1,12 @@
 import { z } from 'zod';
 
+const postgresUrl = z
+  .url()
+  .refine(
+    (value) => ['postgres:', 'postgresql:'].includes(new URL(value).protocol),
+    'Must be a PostgreSQL URL',
+  );
+
 export const envSchema = z.object({
   NODE_ENV: z
     .enum(['development', 'test', 'production'])
@@ -8,13 +15,8 @@ export const envSchema = z.object({
   LOG_LEVEL: z
     .enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace', 'silent'])
     .default('info'),
-  DATABASE_URL: z
-    .url()
-    .refine(
-      (value) => ['postgres:', 'postgresql:'].includes(new URL(value).protocol),
-      'Must be a PostgreSQL URL',
-    )
-    .optional(),
+  DATABASE_URL: postgresUrl.optional(),
+  TEST_DATABASE_URL: postgresUrl.optional(),
   WEB_ORIGIN: z
     .url()
     .refine((value) => {
@@ -25,6 +27,15 @@ export const envSchema = z.object({
 });
 
 export type Config = z.infer<typeof envSchema>;
+export type DatabaseConfig = Config & { DATABASE_URL: string };
+
+export function requireDatabase(config: Config): DatabaseConfig {
+  if (!config.DATABASE_URL)
+    throw new Error(
+      'Invalid environment configuration: DATABASE_URL is required',
+    );
+  return { ...config, DATABASE_URL: config.DATABASE_URL };
+}
 
 export function parseEnv(input: Record<string, string | undefined>): Config {
   const result = envSchema.safeParse(input);
