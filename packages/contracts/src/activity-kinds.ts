@@ -27,10 +27,14 @@ export type CreateActivityKindRequest = z.infer<
   typeof CreateActivityKindRequestSchema
 >;
 export const UpdateActivityKindRequestSchema =
-  CreateActivityKindRequestSchema.partial().refine(
-    (value) => Object.values(value).some((field) => field !== undefined),
-    'At least one field is required',
-  );
+  CreateActivityKindRequestSchema.extend({
+    primaryMeasurementDefinitionId: z.uuid().nullable(),
+  })
+    .partial()
+    .refine(
+      (value) => Object.values(value).some((field) => field !== undefined),
+      'At least one field is required',
+    );
 export type UpdateActivityKindRequest = z.infer<
   typeof UpdateActivityKindRequestSchema
 >;
@@ -42,6 +46,7 @@ export const ActivityKindSchema = z.strictObject({
   color: z.string().regex(/^#[0-9A-F]{6}$/),
   sortOrder,
   isArchived: z.boolean(),
+  primaryMeasurementDefinitionId: z.uuid().nullable(),
   createdAt: z.iso.datetime(),
   updatedAt: z.iso.datetime(),
 });

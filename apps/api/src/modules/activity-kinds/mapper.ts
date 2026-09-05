@@ -9,6 +9,7 @@ export function toActivityKind(row: ActivityKindRecord): ActivityKind {
     color: row.color,
     sortOrder: row.sortOrder,
     isArchived: row.archivedAt !== null,
+    primaryMeasurementDefinitionId: row.primaryMeasurementDefinitionId,
     createdAt: row.createdAt.toISOString(),
     updatedAt: row.updatedAt.toISOString(),
   });

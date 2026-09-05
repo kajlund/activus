@@ -8,11 +8,25 @@ import { ApiError } from './errors.js';
 import type { ActivityKindRepository } from './modules/activity-kinds/model.js';
 import { ActivityKindService } from './modules/activity-kinds/service.js';
 import { activityKindRoutes } from './modules/activity-kinds/routes.js';
+import type { VariantRepository } from './modules/activity-variants/model.js';
+import type { MeasurementRepository } from './modules/measurement-definitions/model.js';
+import { VariantService } from './modules/activity-variants/service.js';
+import { MeasurementService } from './modules/measurement-definitions/service.js';
+import { variantRoutes } from './modules/activity-variants/routes.js';
+import { measurementRoutes } from './modules/measurement-definitions/routes.js';
+import {
+  measurementUnits,
+  MeasurementUnitListResponseSchema,
+} from '@activus/contracts';
 
 export function createApp(
   config: Config,
   logger: Logger = pino({ level: config.LOG_LEVEL }),
-  dependencies: { activityKinds?: ActivityKindRepository } = {},
+  dependencies: {
+    activityKinds?: ActivityKindRepository;
+    variants?: VariantRepository;
+    measurements?: MeasurementRepository;
+  } = {},
 ) {
   const app = new Hono<{ Variables: { requestId: string } }>();
 
@@ -42,9 +56,42 @@ export function createApp(
   if (dependencies.activityKinds) {
     app.route(
       '/api/v1/activity-kinds',
-      activityKindRoutes(new ActivityKindService(dependencies.activityKinds)),
+      activityKindRoutes(
+        new ActivityKindService(
+          dependencies.activityKinds,
+          dependencies.measurements,
+        ),
+      ),
     );
   }
+
+  app.get('/api/v1/measurement-units', (c) =>
+    c.json(
+      MeasurementUnitListResponseSchema.parse({ items: measurementUnits }),
+    ),
+  );
+  if (dependencies.activityKinds && dependencies.variants)
+    app.route(
+      '/api/v1',
+      variantRoutes(
+        new VariantService(dependencies.variants, dependencies.activityKinds),
+      ),
+    );
+  if (
+    dependencies.activityKinds &&
+    dependencies.variants &&
+    dependencies.measurements
+  )
+    app.route(
+      '/api/v1',
+      measurementRoutes(
+        new MeasurementService(
+          dependencies.measurements,
+          dependencies.activityKinds,
+          dependencies.variants,
+        ),
+      ),
+    );
 
   app.notFound((c) =>
     c.json(

@@ -8,6 +8,20 @@
       "when": 1788592602158,
       "tag": "0000_activity_kinds",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1788596739300,
+      "tag": "0001_variants_measurements",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1788606191779,
+      "tag": "0002_configuration_guards",
+      "breakpoints": true
     }
   ]
 }

@@ -10,9 +10,14 @@ import {
 } from './model.js';
 import { toActivityKind } from './mapper.js';
 import { ActivityKindIdSchema } from './schemas.js';
+import type { MeasurementRepository } from '../measurement-definitions/model.js';
+import { isPrimaryEligible } from '../measurement-definitions/validator.js';
 
 export class ActivityKindService {
-  constructor(private readonly repository: ActivityKindRepository) {}
+  constructor(
+    private readonly repository: ActivityKindRepository,
+    private readonly measurements?: Pick<MeasurementRepository, 'find'>,
+  ) {}
 
   async list(includeArchived = false) {
     // Ordering is part of the repository contract and uses PostgreSQL's C collation.
@@ -37,6 +42,21 @@ export class ActivityKindService {
     const parsed = UpdateActivityKindRequestSchema.safeParse(input);
     if (!parsed.success) throw this.invalid();
     const validId = this.parseId(id);
+    if (parsed.data.primaryMeasurementDefinitionId) {
+      const definition = await this.measurements?.find(
+        parsed.data.primaryMeasurementDefinitionId.toLowerCase(),
+      );
+      if (
+        !definition ||
+        definition.activityKindId !== validId ||
+        !isPrimaryEligible(definition)
+      )
+        throw new ApiError(
+          400,
+          'PRIMARY_MEASUREMENT_INVALID',
+          'Primary measurement must be an active numeric parent definition of this kind',
+        );
+    }
     return this.write(() => this.repository.update(validId, parsed.data));
   }
 

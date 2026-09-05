@@ -10,6 +10,7 @@ export interface ActivityKindRecord {
   color: string;
   sortOrder: number;
   archivedAt: Date | null;
+  primaryMeasurementDefinitionId: string | null;
   createdAt: Date;
   updatedAt: Date;
 }

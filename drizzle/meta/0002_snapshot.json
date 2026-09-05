@@ -1,0 +1,626 @@
+{
+  "id": "49582451-1459-4824-a24b-e3d7160ef02d",
+  "prevId": "cd013dd3-cabd-4631-a1c4-d3e47572b473",
+  "version": "7",
+  "dialect": "postgresql",
+  "tables": {
+    "public.activity_kinds": {
+      "name": "activity_kinds",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "name": {
+          "name": "name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "icon_name": {
+          "name": "icon_name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "color": {
+          "name": "color",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "sort_order": {
+          "name": "sort_order",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "archived_at": {
+          "name": "archived_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "primary_measurement_definition_id": {
+          "name": "primary_measurement_definition_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        }
+      },
+      "indexes": {
+        "activity_kinds_primary_measurement_idx": {
+          "name": "activity_kinds_primary_measurement_idx",
+          "columns": [
+            {
+              "expression": "primary_measurement_definition_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "with": {},
+          "method": "btree",
+          "concurrently": false
+        },
+        "activity_kinds_name_unique": {
+          "name": "activity_kinds_name_unique",
+          "columns": [
+            {
+              "expression": "lower(\"name\")",
+              "isExpression": true,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "with": {},
+          "method": "btree",
+          "concurrently": false
+        },
+        "activity_kinds_order_idx": {
+          "name": "activity_kinds_order_idx",
+          "columns": [
+            {
+              "expression": "sort_order",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "\"name\" COLLATE \"C\"",
+              "isExpression": true,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "with": {},
+          "method": "btree",
+          "concurrently": false
+        },
+        "activity_kinds_active_order_idx": {
+          "name": "activity_kinds_active_order_idx",
+          "columns": [
+            {
+              "expression": "sort_order",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "\"name\" COLLATE \"C\"",
+              "isExpression": true,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "with": {},
+          "method": "btree",
+          "where": "\"activity_kinds\".\"archived_at\" IS NULL",
+          "concurrently": false
+        }
+      },
+      "foreignKeys": {
+        "activity_kinds_primary_measurement_definition_id_measurement_definitions_id_fk": {
+          "name": "activity_kinds_primary_measurement_definition_id_measurement_definitions_id_fk",
+          "tableFrom": "activity_kinds",
+          "columnsFrom": ["primary_measurement_definition_id"],
+          "tableTo": "measurement_definitions",
+          "columnsTo": ["id"],
+          "onUpdate": "no action",
+          "onDelete": "restrict"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "activity_kinds_name_valid": {
+          "name": "activity_kinds_name_valid",
+          "value": "char_length(\"activity_kinds\".\"name\") BETWEEN 1 AND 120 AND \"activity_kinds\".\"name\" = btrim(\"activity_kinds\".\"name\", U&'\\0009\\000A\\000B\\000C\\000D\\0020\\00A0\\1680\\2000\\2001\\2002\\2003\\2004\\2005\\2006\\2007\\2008\\2009\\200A\\2028\\2029\\202F\\205F\\3000\\FEFF')"
+        },
+        "activity_kinds_color_valid": {
+          "name": "activity_kinds_color_valid",
+          "value": "\"activity_kinds\".\"color\" ~ '^#[0-9A-F]{6}$'"
+        },
+        "activity_kinds_sort_order_valid": {
+          "name": "activity_kinds_sort_order_valid",
+          "value": "\"activity_kinds\".\"sort_order\" >= 0"
+        },
+        "activity_kinds_icon_name_valid": {
+          "name": "activity_kinds_icon_name_valid",
+          "value": "\"activity_kinds\".\"icon_name\" IN ('activity', 'footprints', 'bike', 'waves', 'dumbbell', 'person-standing')"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.activity_variants": {
+      "name": "activity_variants",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "activity_kind_id": {
+          "name": "activity_kind_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "name": {
+          "name": "name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "sort_order": {
+          "name": "sort_order",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "is_default": {
+          "name": "is_default",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        },
+        "archived_at": {
+          "name": "archived_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "activity_variants_name_unique": {
+          "name": "activity_variants_name_unique",
+          "columns": [
+            {
+              "expression": "activity_kind_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "lower(\"name\")",
+              "isExpression": true,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "with": {},
+          "method": "btree",
+          "concurrently": false
+        },
+        "activity_variants_default_unique": {
+          "name": "activity_variants_default_unique",
+          "columns": [
+            {
+              "expression": "activity_kind_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "with": {},
+          "method": "btree",
+          "where": "\"activity_variants\".\"is_default\" AND \"activity_variants\".\"archived_at\" IS NULL",
+          "concurrently": false
+        },
+        "activity_variants_order_idx": {
+          "name": "activity_variants_order_idx",
+          "columns": [
+            {
+              "expression": "activity_kind_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "sort_order",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "\"name\" COLLATE \"C\"",
+              "isExpression": true,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "with": {},
+          "method": "btree",
+          "concurrently": false
+        }
+      },
+      "foreignKeys": {
+        "activity_variants_activity_kind_id_activity_kinds_id_fk": {
+          "name": "activity_variants_activity_kind_id_activity_kinds_id_fk",
+          "tableFrom": "activity_variants",
+          "columnsFrom": ["activity_kind_id"],
+          "tableTo": "activity_kinds",
+          "columnsTo": ["id"],
+          "onUpdate": "no action",
+          "onDelete": "restrict"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "activity_variants_id_kind_unique": {
+          "name": "activity_variants_id_kind_unique",
+          "columns": ["id", "activity_kind_id"],
+          "nullsNotDistinct": false
+        }
+      },
+      "policies": {},
+      "checkConstraints": {
+        "activity_variants_name_valid": {
+          "name": "activity_variants_name_valid",
+          "value": "char_length(\"activity_variants\".\"name\") BETWEEN 1 AND 120 AND \"activity_variants\".\"name\" = btrim(\"activity_variants\".\"name\", U&'\\0009\\000A\\000B\\000C\\000D\\0020\\00A0\\1680\\2000\\2001\\2002\\2003\\2004\\2005\\2006\\2007\\2008\\2009\\200A\\2028\\2029\\202F\\205F\\3000\\FEFF')"
+        },
+        "activity_variants_sort_order_valid": {
+          "name": "activity_variants_sort_order_valid",
+          "value": "\"activity_variants\".\"sort_order\" >= 0"
+        },
+        "activity_variants_default_active": {
+          "name": "activity_variants_default_active",
+          "value": "NOT \"activity_variants\".\"is_default\" OR \"activity_variants\".\"archived_at\" IS NULL"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.measurement_definitions": {
+      "name": "measurement_definitions",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "activity_kind_id": {
+          "name": "activity_kind_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "activity_variant_id": {
+          "name": "activity_variant_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "name": {
+          "name": "name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "value_type": {
+          "name": "value_type",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "canonical_unit": {
+          "name": "canonical_unit",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "display_unit": {
+          "name": "display_unit",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "precision": {
+          "name": "precision",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "is_required": {
+          "name": "is_required",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "minimum_value": {
+          "name": "minimum_value",
+          "type": "double precision",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "maximum_value": {
+          "name": "maximum_value",
+          "type": "double precision",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "aggregation": {
+          "name": "aggregation",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "personal_best_direction": {
+          "name": "personal_best_direction",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "sort_order": {
+          "name": "sort_order",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "archived_at": {
+          "name": "archived_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "measurement_definitions_parent_name_unique": {
+          "name": "measurement_definitions_parent_name_unique",
+          "columns": [
+            {
+              "expression": "activity_kind_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "lower(\"name\")",
+              "isExpression": true,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "with": {},
+          "method": "btree",
+          "where": "\"measurement_definitions\".\"activity_variant_id\" IS NULL",
+          "concurrently": false
+        },
+        "measurement_definitions_variant_name_unique": {
+          "name": "measurement_definitions_variant_name_unique",
+          "columns": [
+            {
+              "expression": "activity_variant_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "lower(\"name\")",
+              "isExpression": true,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "with": {},
+          "method": "btree",
+          "where": "\"measurement_definitions\".\"activity_variant_id\" IS NOT NULL",
+          "concurrently": false
+        },
+        "measurement_definitions_order_idx": {
+          "name": "measurement_definitions_order_idx",
+          "columns": [
+            {
+              "expression": "activity_kind_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "sort_order",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "\"name\" COLLATE \"C\"",
+              "isExpression": true,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "with": {},
+          "method": "btree",
+          "concurrently": false
+        },
+        "measurement_definitions_variant_idx": {
+          "name": "measurement_definitions_variant_idx",
+          "columns": [
+            {
+              "expression": "activity_variant_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "with": {},
+          "method": "btree",
+          "concurrently": false
+        }
+      },
+      "foreignKeys": {
+        "measurement_definitions_activity_kind_id_activity_kinds_id_fk": {
+          "name": "measurement_definitions_activity_kind_id_activity_kinds_id_fk",
+          "tableFrom": "measurement_definitions",
+          "columnsFrom": ["activity_kind_id"],
+          "tableTo": "activity_kinds",
+          "columnsTo": ["id"],
+          "onUpdate": "no action",
+          "onDelete": "restrict"
+        },
+        "measurement_definitions_variant_kind_fk": {
+          "name": "measurement_definitions_variant_kind_fk",
+          "tableFrom": "measurement_definitions",
+          "columnsFrom": ["activity_variant_id", "activity_kind_id"],
+          "tableTo": "activity_variants",
+          "columnsTo": ["id", "activity_kind_id"],
+          "onUpdate": "no action",
+          "onDelete": "restrict"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "measurement_definitions_name_valid": {
+          "name": "measurement_definitions_name_valid",
+          "value": "char_length(\"measurement_definitions\".\"name\") BETWEEN 1 AND 120 AND \"measurement_definitions\".\"name\" = btrim(\"measurement_definitions\".\"name\", U&'\\0009\\000A\\000B\\000C\\000D\\0020\\00A0\\1680\\2000\\2001\\2002\\2003\\2004\\2005\\2006\\2007\\2008\\2009\\200A\\2028\\2029\\202F\\205F\\3000\\FEFF')"
+        },
+        "measurement_definitions_sort_order_valid": {
+          "name": "measurement_definitions_sort_order_valid",
+          "value": "\"measurement_definitions\".\"sort_order\" >= 0"
+        },
+        "measurement_definitions_value_type_valid": {
+          "name": "measurement_definitions_value_type_valid",
+          "value": "\"measurement_definitions\".\"value_type\" IN ('decimal', 'integer', 'duration', 'rating', 'boolean', 'text')"
+        },
+        "measurement_definitions_aggregation_valid": {
+          "name": "measurement_definitions_aggregation_valid",
+          "value": "\"measurement_definitions\".\"aggregation\" IN ('total', 'average', 'latest', 'minimum', 'none')"
+        },
+        "measurement_definitions_best_valid": {
+          "name": "measurement_definitions_best_valid",
+          "value": "\"measurement_definitions\".\"personal_best_direction\" IN ('highest', 'lowest', 'none')"
+        },
+        "measurement_definitions_bounds_valid": {
+          "name": "measurement_definitions_bounds_valid",
+          "value": "(\"measurement_definitions\".\"minimum_value\" IS NULL OR \"measurement_definitions\".\"minimum_value\" BETWEEN -9007199254740991 AND 9007199254740991) AND (\"measurement_definitions\".\"maximum_value\" IS NULL OR \"measurement_definitions\".\"maximum_value\" BETWEEN -9007199254740991 AND 9007199254740991) AND (\"measurement_definitions\".\"minimum_value\" IS NULL OR \"measurement_definitions\".\"maximum_value\" IS NULL OR \"measurement_definitions\".\"minimum_value\" <= \"measurement_definitions\".\"maximum_value\")"
+        },
+        "measurement_definitions_combination_valid": {
+          "name": "measurement_definitions_combination_valid",
+          "value": "coalesce(CASE\n    WHEN \"measurement_definitions\".\"value_type\" IN ('boolean', 'text') THEN \"measurement_definitions\".\"canonical_unit\" IS NULL AND \"measurement_definitions\".\"display_unit\" IS NULL AND \"measurement_definitions\".\"precision\" IS NULL AND \"measurement_definitions\".\"minimum_value\" IS NULL AND \"measurement_definitions\".\"maximum_value\" IS NULL AND \"measurement_definitions\".\"aggregation\" = 'none' AND \"measurement_definitions\".\"personal_best_direction\" = 'none'\n    WHEN \"measurement_definitions\".\"value_type\" = 'rating' THEN \"measurement_definitions\".\"canonical_unit\" IS NULL AND \"measurement_definitions\".\"display_unit\" IS NULL AND \"measurement_definitions\".\"precision\" IS NULL AND \"measurement_definitions\".\"minimum_value\" = 1 AND \"measurement_definitions\".\"maximum_value\" IN (5, 10) AND \"measurement_definitions\".\"aggregation\" <> 'total'\n    WHEN \"measurement_definitions\".\"value_type\" = 'duration' THEN \"measurement_definitions\".\"canonical_unit\" = 'second' AND \"measurement_definitions\".\"display_unit\" IN ('second', 'minute', 'hour-minute') AND \"measurement_definitions\".\"precision\" IS NULL AND (\"measurement_definitions\".\"minimum_value\" IS NULL OR (\"measurement_definitions\".\"minimum_value\" >= 0 AND trunc(\"measurement_definitions\".\"minimum_value\") = \"measurement_definitions\".\"minimum_value\")) AND (\"measurement_definitions\".\"maximum_value\" IS NULL OR (\"measurement_definitions\".\"maximum_value\" >= 0 AND trunc(\"measurement_definitions\".\"maximum_value\") = \"measurement_definitions\".\"maximum_value\"))\n    ELSE ((\"measurement_definitions\".\"canonical_unit\" IS NULL AND \"measurement_definitions\".\"display_unit\" IS NULL) OR ((\"measurement_definitions\".\"canonical_unit\" = 'metre' AND \"measurement_definitions\".\"display_unit\" = 'metre') OR (\"measurement_definitions\".\"canonical_unit\" = 'metre' AND \"measurement_definitions\".\"display_unit\" = 'kilometre') OR (\"measurement_definitions\".\"canonical_unit\" = 'metre' AND \"measurement_definitions\".\"display_unit\" = 'mile') OR (\"measurement_definitions\".\"canonical_unit\" = 'metre' AND \"measurement_definitions\".\"display_unit\" = 'foot') OR (\"measurement_definitions\".\"canonical_unit\" = 'kilogram' AND \"measurement_definitions\".\"display_unit\" = 'kilogram') OR (\"measurement_definitions\".\"canonical_unit\" = 'kilogram' AND \"measurement_definitions\".\"display_unit\" = 'pound') OR (\"measurement_definitions\".\"canonical_unit\" = 'count' AND \"measurement_definitions\".\"display_unit\" = 'count'))) AND CASE WHEN \"measurement_definitions\".\"value_type\" = 'decimal' THEN \"measurement_definitions\".\"precision\" BETWEEN 0 AND 6 ELSE (\"measurement_definitions\".\"precision\" IS NULL OR \"measurement_definitions\".\"precision\" = 0) AND (\"measurement_definitions\".\"minimum_value\" IS NULL OR trunc(\"measurement_definitions\".\"minimum_value\") = \"measurement_definitions\".\"minimum_value\") AND (\"measurement_definitions\".\"maximum_value\" IS NULL OR trunc(\"measurement_definitions\".\"maximum_value\") = \"measurement_definitions\".\"maximum_value\") END\n    END, false)"
+        }
+      },
+      "isRLSEnabled": false
+    }
+  },
+  "enums": {},
+  "schemas": {},
+  "views": {},
+  "sequences": {},
+  "roles": {},
+  "policies": {},
+  "_meta": {
+    "columns": {},
+    "schemas": {},
+    "tables": {}
+  }
+}

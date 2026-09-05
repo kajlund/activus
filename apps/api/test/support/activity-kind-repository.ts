@@ -32,6 +32,7 @@ export class FakeActivityKindRepository implements ActivityKindRepository {
       ...input,
       id: randomUUID(),
       archivedAt: null,
+      primaryMeasurementDefinitionId: null,
       createdAt: now,
       updatedAt: now,
     };
@@ -48,6 +49,10 @@ export class FakeActivityKindRepository implements ActivityKindRepository {
       iconName: input.iconName ?? row.iconName,
       color: input.color ?? row.color,
       sortOrder: input.sortOrder ?? row.sortOrder,
+      primaryMeasurementDefinitionId:
+        input.primaryMeasurementDefinitionId === undefined
+          ? row.primaryMeasurementDefinitionId
+          : input.primaryMeasurementDefinitionId,
       updatedAt: new Date(),
     };
     this.rows.set(id, next);

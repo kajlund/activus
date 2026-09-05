@@ -1,6 +1,7 @@
 import { eq, isNull, sql } from 'drizzle-orm';
 import type { Database } from '../../db/client.js';
 import { activityKinds } from '../../db/schema.js';
+import { translateConfigurationError } from '../../db/configuration-errors.js';
 import {
   ActivityKindNameConflict,
   type ActivityKindRepository,
@@ -22,7 +23,7 @@ export function translateRepositoryError(error: unknown): never {
     }
     current = 'cause' in current ? current.cause : undefined;
   }
-  throw error;
+  return translateConfigurationError(error);
 }
 
 export function createActivityKindRepository(
