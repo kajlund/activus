@@ -6,10 +6,13 @@ import {
   activityKinds,
   activityVariants,
   measurementDefinitions,
+  tags,
+  activityTags,
 } from '../../db/schema.js';
 import { translateConfigurationError } from '../../db/configuration-errors.js';
 import type { ActivityBundle, ActivityRepository } from './model.js';
 import { activityError } from './validator.js';
+import { requireTags } from '../tags/validator.js';
 
 type Connection = Pick<Database, 'select' | 'insert' | 'update' | 'delete'>;
 const selection = {
@@ -19,7 +22,7 @@ const selection = {
 };
 async function withMeasurements(
   db: Connection,
-  rows: Omit<ActivityBundle, 'measurements'>[],
+  rows: Omit<ActivityBundle, 'measurements' | 'tags'>[],
 ): Promise<ActivityBundle[]> {
   if (!rows.length) return [];
   const values = await db
@@ -50,8 +53,26 @@ async function withMeasurements(
     list.push(value);
     byActivity.set(value.value.activityId, list);
   }
+  const assignments = await db
+    .select({ activityId: activityTags.activityId, tag: tags })
+    .from(activityTags)
+    .innerJoin(tags, eq(activityTags.tagId, tags.id))
+    .where(
+      inArray(
+        activityTags.activityId,
+        rows.map((r) => r.activity.id),
+      ),
+    )
+    .orderBy(sql`lower(${tags.name}) COLLATE "C"`, tags.id);
+  const tagsByActivity = new Map<string, ActivityBundle['tags']>();
+  for (const assignment of assignments) {
+    const list = tagsByActivity.get(assignment.activityId) ?? [];
+    list.push(assignment.tag);
+    tagsByActivity.set(assignment.activityId, list);
+  }
   return rows.map((row) => ({
     ...row,
+    tags: tagsByActivity.get(row.activity.id) ?? [],
     measurements: byActivity.get(row.activity.id) ?? [],
   }));
 }
@@ -92,6 +113,19 @@ export function createActivityRepository(db: Database): ActivityRepository {
     async list(query) {
       return db.transaction(
         async (tx) => {
+          if (query.tagIds?.length)
+            requireTags(
+              query.tagIds,
+              await tx
+                .select()
+                .from(tags)
+                .where(inArray(tags.id, query.tagIds)),
+            );
+          const tagFilter = query.tagIds?.length
+            ? query.tagMatch === 'all'
+              ? sql`(SELECT count(*) FROM ${activityTags} WHERE ${activityTags.activityId} = ${activities.id} AND ${inArray(activityTags.tagId, query.tagIds)}) = ${query.tagIds.length}`
+              : sql`EXISTS (SELECT 1 FROM ${activityTags} WHERE ${activityTags.activityId} = ${activities.id} AND ${inArray(activityTags.tagId, query.tagIds)})`
+            : undefined;
           // Search is a literal substring: %, _ and backslash never act as wildcards.
           const search = query.search
             ? `%${query.search.replace(/[\\%_]/g, '\\$&')}%`
@@ -109,6 +143,7 @@ export function createActivityRepository(db: Database): ActivityRepository {
             )
             .where(
               and(
+                tagFilter,
                 query.dateFrom
                   ? gte(activities.activityDate, query.dateFrom)
                   : undefined,
@@ -145,7 +180,7 @@ export function createActivityRepository(db: Database): ActivityRepository {
         { isolationLevel: 'repeatable read', accessMode: 'read only' },
       );
     },
-    async write(id, requestedKindId, validate) {
+    async write(id, requestedKindId, validate, requestedTagIds) {
       try {
         return await db.transaction(async (tx) => {
           // Serialize PATCH read/merge/write and deletion on this activity.
@@ -174,6 +209,15 @@ export function createActivityRepository(db: Database): ActivityRepository {
             .orderBy(activityKinds.id)
             .for('update');
           const existing = id ? await find(tx, id) : undefined;
+          // Shared locks allow concurrent assignments while serializing archive/update against validation.
+          const selectedTags = requestedTagIds?.length
+            ? await tx
+                .select()
+                .from(tags)
+                .where(inArray(tags.id, requestedTagIds))
+                .orderBy(tags.id)
+                .for('share')
+            : [];
           const variants = await tx
             .select()
             .from(activityVariants)
@@ -187,6 +231,7 @@ export function createActivityRepository(db: Database): ActivityRepository {
             kind: kinds.find((k) => k.id === kindId),
             variants,
             definitions,
+            tags: selectedTags,
           });
           const row = id
             ? (
@@ -225,6 +270,26 @@ export function createActivityRepository(db: Database): ActivityRepository {
                   set: { ...value, updatedAt: sql`clock_timestamp()` },
                 });
             }
+          }
+          if (write.tagIds !== undefined) {
+            await tx.delete(activityTags).where(
+              and(
+                eq(activityTags.activityId, row.id),
+                write.tagIds.length
+                  ? sql`${activityTags.tagId} NOT IN (${sql.join(
+                      write.tagIds.map((id) => sql`${id}::uuid`),
+                      sql`, `,
+                    )})`
+                  : undefined,
+              ),
+            );
+            if (write.tagIds.length)
+              await tx
+                .insert(activityTags)
+                .values(
+                  write.tagIds.map((tagId) => ({ activityId: row.id, tagId })),
+                )
+                .onConflictDoNothing();
           }
           const result = await find(tx, row.id);
           if (!result) throw new Error('Activity disappeared during write');

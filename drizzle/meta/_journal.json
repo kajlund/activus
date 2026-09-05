@@ -36,6 +36,13 @@
       "when": 1788609207594,
       "tag": "0004_measurement_history",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1788626076757,
+      "tag": "0005_tags",
+      "breakpoints": true
     }
   ]
 }

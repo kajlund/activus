@@ -1,4 +1,5 @@
 import type { ActivityListQuery } from '@activus/contracts';
+import type { TagRecord } from '../tags/model.js';
 import type {
   activities,
   activityMeasurements,
@@ -14,6 +15,7 @@ export type DefinitionRecord = typeof measurementDefinitions.$inferSelect;
 export type KindRecord = typeof activityKinds.$inferSelect;
 export type VariantRecord = typeof activityVariants.$inferSelect;
 export interface ActivityBundle {
+  tags: TagRecord[];
   activity: ActivityRecord;
   kind: KindRecord;
   variant: VariantRecord | null;
@@ -32,12 +34,14 @@ export type ValueFields = Pick<
   | 'textValue'
 >;
 export interface ActivityWriteContext {
+  tags: TagRecord[];
   existing: ActivityBundle | undefined;
   kind: KindRecord | undefined;
   variants: VariantRecord[];
   definitions: DefinitionRecord[];
 }
 export interface ActivityWrite {
+  tagIds?: string[] | undefined;
   fields: ActivityFields;
   measurements: ValueFields[] | undefined;
 }
@@ -50,6 +54,7 @@ export interface ActivityRepository {
     id: string | undefined,
     kindId: string | undefined,
     validate: (context: ActivityWriteContext) => ActivityWrite,
+    tagIds?: string[] | undefined,
   ): Promise<ActivityBundle>;
   delete(id: string): Promise<boolean>;
 }

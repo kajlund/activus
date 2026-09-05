@@ -8,6 +8,7 @@ import { createActivityKindRepository } from './modules/activity-kinds/repositor
 import { createVariantRepository } from './modules/activity-variants/repository.js';
 import { createMeasurementRepository } from './modules/measurement-definitions/repository.js';
 import { createActivityRepository } from './modules/activities/repository.js';
+import { createTagRepository } from './modules/tags/repository.js';
 
 loadRootEnv();
 const config = requireDatabase(parseEnv(process.env));
@@ -28,6 +29,7 @@ const app = createApp(config, logger, {
   variants: createVariantRepository(database.db),
   measurements: createMeasurementRepository(database.db),
   activities: createActivityRepository(database.db),
+  tags: createTagRepository(database.db),
 });
 const server = serve({ fetch: app.fetch, port: config.PORT }, (info) => {
   logger.info({ port: info.port }, 'API listening');

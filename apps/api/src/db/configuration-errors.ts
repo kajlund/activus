@@ -1,6 +1,13 @@
 import { ApiError } from '../errors.js';
 
 const constraints: Record<string, [400 | 404 | 409, string, string]> = {
+  tags_name_unique: [
+    409,
+    'TAG_NAME_CONFLICT',
+    'A tag already reserves this name',
+  ],
+  tags_name_valid: [400, 'TAG_INVALID', 'Invalid tag name'],
+  tags_color_valid: [400, 'TAG_INVALID', 'Invalid tag color'],
   configuration_measurement_has_history: [
     409,
     'MEASUREMENT_DEFINITION_HAS_HISTORY',

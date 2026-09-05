@@ -20,6 +20,7 @@ import {
   date,
   bigint,
   numeric,
+  primaryKey,
   foreignKey,
   unique,
   type AnyPgColumn,
@@ -28,6 +29,50 @@ import {
 // ECMAScript String.trim whitespace, explicitly encoded rather than locale-dependent.
 const trimCharacters = sql.raw(
   String.raw`U&'\0009\000A\000B\000C\000D\0020\00A0\1680\2000\2001\2002\2003\2004\2005\2006\2007\2008\2009\200A\2028\2029\202F\205F\3000\FEFF'`,
+);
+
+export const tags = pgTable(
+  'tags',
+  {
+    id: uuid('id').defaultRandom().primaryKey(),
+    name: text('name').notNull(),
+    color: text('color'),
+    archivedAt: timestamp('archived_at', { withTimezone: true, mode: 'date' }),
+    createdAt: timestamp('created_at', { withTimezone: true, mode: 'date' })
+      .defaultNow()
+      .notNull(),
+    updatedAt: timestamp('updated_at', { withTimezone: true, mode: 'date' })
+      .defaultNow()
+      .notNull(),
+  },
+  (t) => [
+    uniqueIndex('tags_name_unique').on(sql`lower(${t.name})`),
+    index('tags_order_idx').on(sql`lower(${t.name}) COLLATE "C"`, t.id),
+    check(
+      'tags_name_valid',
+      sql`char_length(${t.name}) BETWEEN 1 AND 120 AND ${t.name} = btrim(${t.name}, ${trimCharacters})`,
+    ),
+    check('tags_color_valid', sql`${t.color} ~ '^#[0-9A-F]{6}$'`),
+  ],
+);
+
+export const activityTags = pgTable(
+  'activity_tags',
+  {
+    activityId: uuid('activity_id')
+      .notNull()
+      .references(() => activities.id, { onDelete: 'cascade' }),
+    tagId: uuid('tag_id')
+      .notNull()
+      .references(() => tags.id, { onDelete: 'restrict' }),
+    createdAt: timestamp('created_at', { withTimezone: true, mode: 'date' })
+      .defaultNow()
+      .notNull(),
+  },
+  (t) => [
+    primaryKey({ columns: [t.activityId, t.tagId] }),
+    index('activity_tags_tag_activity_idx').on(t.tagId, t.activityId),
+  ],
 );
 
 export const activityKinds = pgTable(

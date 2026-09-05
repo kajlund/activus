@@ -12,6 +12,7 @@ import type {
 } from './model.js';
 import { activityError, effective, measurementValue } from './validator.js';
 import { toActivity, toActivitySummary } from './mapper.js';
+import { validateActivityTags, validateTagInput } from '../tags/validator.js';
 
 function rejectSource(input: unknown) {
   if (
@@ -67,6 +68,7 @@ export class ActivityService {
     };
   }
   async create(input: unknown) {
+    validateTagInput(input);
     rejectSource(input);
     const parsed = CreateActivityRequestSchema.safeParse(input);
     if (!parsed.success)
@@ -76,10 +78,12 @@ export class ActivityService {
         undefined,
         parsed.data.activityKindId,
         (context) => this.validate(context, parsed.data),
+        parsed.data.tagIds,
       ),
     );
   }
   async update(id: string, input: unknown) {
+    validateTagInput(input);
     rejectSource(input);
     const parsed = UpdateActivityRequestSchema.safeParse(input);
     if (!parsed.success)
@@ -89,6 +93,7 @@ export class ActivityService {
         parseId(id, 'ACTIVITY_INVALID'),
         parsed.data.activityKindId,
         (context) => this.validate(context, parsed.data),
+        parsed.data.tagIds,
       ),
     );
   }
@@ -97,6 +102,11 @@ export class ActivityService {
     patch: import('@activus/contracts').UpdateActivityRequest,
   ): ActivityWrite {
     const { existing, kind, variants, definitions } = context;
+    const tagIds = validateActivityTags(
+      patch.tagIds,
+      existing?.tags ?? [],
+      context.tags,
+    );
     const previous = existing?.activity;
     const raw = {
       ...previous,
@@ -228,6 +238,7 @@ export class ActivityService {
         isPartial: raw.isPartial ?? false,
       },
       measurements,
+      tagIds,
     };
   }
   async delete(id: string) {

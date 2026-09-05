@@ -9,3 +9,4 @@ export * from './activity-variants.js';
 export * from './measurement-definitions.js';
 export * from './measurement-units.js';
 export * from './activities.js';
+export * from './tags.js';

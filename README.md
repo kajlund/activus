@@ -1,6 +1,6 @@
 # Activus
 
-Activus training journal, through phase 2C: the phase 1 web shell plus PostgreSQL configuration and activity APIs, typed measurement values, filtering, and pagination. Design and architecture are defined in `.doc/visual-design.md` and `.doc/technical-architecture.md`.
+Activus training journal, through phase 2D: the phase 1 web shell plus PostgreSQL configuration, activity and tag APIs, typed measurement values, filtering, and pagination. Design and architecture are defined in `.doc/visual-design.md` and `.doc/technical-architecture.md`.
 
 ## Setup
 
@@ -16,7 +16,7 @@ If pnpm is unavailable, prefix commands with `npx --yes pnpm@10.34.5` instead of
 
 Before migrating or starting the API, copy `.env.example` to `.env` at the repository root and set `DATABASE_URL` to your development PostgreSQL database. Existing process environment variables take precedence. Never commit credentials. `DATABASE_URL` is required for real server startup and migrations; app-only tests need no database. `WEB_ORIGIN` must be an HTTP(S) origin without a path or trailing slash.
 
-Open <http://localhost:5173>. Vite proxies `/api` to the API on port 3000 (or `PORT` from the root environment). The API exposes `GET /api/health`, returning `{"status":"ok"}`. This is process health, not database readiness. `WEB_ORIGIN` controls API CORS; Vite uses a fixed port with strict port checking.
+Open <http://localhost:5173>. Vite proxies `/api` to the API on port 3000 (or `PORT` from the root environment). The server exposes `GET /health` outside the API prefix, returning `{"status":"ok"}`; access it directly at <http://localhost:3000/health> with the default port. This is process health, not database readiness. `WEB_ORIGIN` controls API CORS; Vite uses a fixed port with strict port checking.
 
 `pnpm dev` builds contracts first, then watches contracts, API, and web together. Ctrl+C stops the process group; an exited child stops its siblings. The API verifies database connectivity before listening, handles SIGINT/SIGTERM, stops accepting requests, and closes its pool after requests finish. Shutdown has a 15-second deadline; database statements have a 10-second timeout. Startup never applies migrations or seeds data.
 
@@ -56,6 +56,7 @@ apps/api/src/
   modules/activities/
                      Contracts validation, exact decimal arithmetic, service,
                      transactional repository, mappers, routes and unit tests
+  modules/tags/       Managed tag service, repository, validation, routes and tests
   app.ts              Hono construction, health, logging, errors
   server.ts           Environment loading, startup, shutdown
 apps/api/test/        Foundation tests, test support, guarded PostgreSQL tests
@@ -66,7 +67,7 @@ apps/web/
   src/app-shell.ts    Responsive navigation and placeholder content
   src/styles/        Approved tokens and local font foundation
   test/              Shell navigation and keyboard focus tests
-packages/contracts/  Health, configuration, activity, unit and error contracts
+packages/contracts/  Health, configuration, activity, tag, unit and error contracts
 scripts/import/      Reserved for the future JSON importer
 drizzle/             Generated SQL migrations and snapshots
 ```
@@ -223,6 +224,41 @@ Ordering is journal date descending, start time descending with nulls last, crea
 
 Pagination returns `limit`, `offset`, `hasMore` and nullable `nextOffset`. The repository fetches one extra row instead of an expensive total count. It batch-loads measurements in one additional query, avoiding N+1 reads. Like other offset APIs, separate page requests can shift when concurrent inserts/deletes occur.
 
+## Phase 2D tags and activity tagging
+
+Tags are optional global labels such as Commute, Recovery, Race or With dog. They describe cross-cutting context. Use an activity variant for structured distinctions such as Treadmill, Outdoor, Trail or Pool. No tags are implicitly created from activity input.
+
+| Method     | Path                       | Behaviour                                               |
+| ---------- | -------------------------- | ------------------------------------------------------- |
+| GET, POST  | `/api/v1/tags`             | List tags or create one (`201` and `Location`)          |
+| GET, PATCH | `/api/v1/tags/:id`         | Read or partially update a tag (`200`)                  |
+| POST       | `/api/v1/tags/:id/archive` | Archive without removing historical assignments (`200`) |
+| POST       | `/api/v1/tags/:id/restore` | Restore the same identity (`200`)                       |
+
+Create requires a trimmed, nonempty name of at most 120 characters. Optional `color` defaults to null, accepts six-digit CSS hex, and normalizes to uppercase. PATCH accepts only name and colour, requires at least one field, preserves omitted colour and allows explicit null to clear it. Tags have no icons, ordering fields, hierarchy or kind ownership. Responses expose `id`, `name`, `color`, `isArchived`, `createdAt` and `updatedAt`.
+
+Names are globally reserved case-insensitively across both active and archived rows, matching activity kinds. Archival does not free a name; renaming does. The PostgreSQL unique index protects concurrent/direct writes and restore. Under this stronger reservation policy a conflicting archived identity cannot normally be created. Archive/restore are idempotent and preserve timestamps when already in the requested state. There is no permanent tag deletion endpoint. `activityCount` is deliberately deferred.
+
+Tag lists default to active records and accept `includeArchived=true` and optional `search` (1–120 trimmed characters, literal case-insensitive substring). Unknown/repeated parameters are rejected. Lists and activity tag summaries order by `lower(name)` using PostgreSQL `C` collation, then UUID.
+
+Activity create and PATCH accept `tagIds`, an array of at most 100 UUIDs. Omission means no tags on create and preservation on PATCH. A supplied array is the complete desired set; `[]` removes every assignment. Duplicate IDs, including differently cased spellings of the same UUID, are rejected. All tags must exist. Newly assigned tags must be active; an already-attached archived tag may remain by omission or explicit inclusion. After explicit removal, an archived tag cannot be re-added until restored. Archival and restoration never modify join rows or activity data.
+
+Tag replacement, common fields and measurement changes commit in the same activity transaction. Tag IDs and measurement arrays have independent replacement semantics: changing one does not replace the other. Shared tag row locks coordinate assignment validation with concurrent archival/updates; activity row locks preserve independent concurrent PATCH changes. These active-assignment rules are enforced by the activity service, which future application write paths must reuse. Database foreign keys and a composite primary key protect relationship integrity.
+
+Activity details and list items include `tags: [{id, name, color, isArchived}]`, including historical archived tags. Assignment storage uses `activity_tags(activity_id, tag_id, created_at)`. Its composite primary key supports activity-to-tag lookup; a `(tag_id, activity_id)` index supports reverse filtering. Activity deletion cascades to its assignment rows. Tag deletion is restricted while referenced and never cascades to activities.
+
+Activity filtering uses a single comma-separated query parameter:
+
+```text
+/api/v1/activities?tagIds=<uuid>,<uuid>&tagMatch=all
+```
+
+`tagMatch=any` is the default when IDs are supplied; `all` requires every requested tag. `tagMatch` without IDs, empty lists, malformed/duplicate IDs and repeated parameters are rejected. Filters accept up to 100 IDs and can include archived tags. Unknown IDs return `404 TAG_NOT_FOUND`. All existing date, kind, variant, search, partial-status, ordering and offset-pagination behaviour remains available.
+
+`any` uses a correlated `EXISTS`; `all` compares the matching unique-assignment count with the requested ID count. Neither joins tag rows into the paginated activity result, so each activity appears once. Responses retain load-more metadata without total counts. Tags and measurements are batch-loaded: three SELECTs per nonempty activity page, or four with the batched tag-existence check, independent of page size.
+
+Errors retain the existing request-ID envelope: `TAG_INVALID`, `ACTIVITY_TAG_INVALID` and `ACTIVITY_TAG_DUPLICATE` use `400`; `TAG_NOT_FOUND` uses `404`; name conflicts (`TAG_NAME_CONFLICT`) and new archived assignments (`TAG_ARCHIVED`) use `409`. Malformed activity query parameters retain `400 ACTIVITY_INVALID`.
+
 ## Dedicated database tests
 
 Provision an isolated disposable test database with a dedicated non-superuser role. Never use the development/production database or its role:
@@ -237,8 +273,8 @@ Set `TEST_DATABASE_URL=postgresql://activus_test:YOUR_PASSWORD@localhost:5432/ac
 
 Guards require a database named `activus_test` or `activus_test_...`, the role `activus_test`, no URL query overrides, non-production `NODE_ENV`, and a database name different from `DATABASE_URL` even when hostnames differ. The suite verifies the actual database/role and refuses superuser, database-creator or role-creator connections before migrating. It applies committed migrations only to this test database and removes only UUIDs it inserted; it never drops or truncates a database/schema/table. Without `TEST_DATABASE_URL`, the database suite reports explicit skips. An unsafe URL or a configured but unreachable database fails rather than silently skipping.
 
-## Deferred after phase 2C
+## Deferred after phase 2D
 
 Bulk reordering remains deferred: phase 2A did not establish a complete-list reorder pattern. Ordinary `sortOrder` edits remain available. Explicit inherited-definition overrides/hiding are deferred until their semantics are designed. Optional development seeds remain deferred; migrations contain no opinionated kinds.
 
-Goals, progress and personal-best calculations, tags, authentication, legacy import, activity UI and management UI are not implemented. Deployment, Docker and chart selection remain deferred. Phase 2D has not begun. No Git repository or Git configuration is initialized or changed.
+Goals (including tag-scoped goals), progress and personal-best calculations, tag analytics/grouping, authentication, legacy import, activity UI and management UI are not implemented. Per-tag activity counts, deployment, Docker and chart selection remain deferred. No Git repository or Git configuration is initialized or changed.

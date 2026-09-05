@@ -1,5 +1,8 @@
 import { randomUUID } from 'node:crypto';
 import { HealthResponseSchema } from '@activus/contracts';
+import type { TagRepository } from './modules/tags/model.js';
+import { TagService } from './modules/tags/service.js';
+import { tagRoutes } from './modules/tags/routes.js';
 import type { ActivityRepository } from './modules/activities/model.js';
 import { ActivityService } from './modules/activities/service.js';
 import { activityRoutes } from './modules/activities/routes.js';
@@ -30,6 +33,7 @@ export function createApp(
     variants?: VariantRepository;
     measurements?: MeasurementRepository;
     activities?: ActivityRepository;
+    tags?: TagRepository;
   } = {},
 ) {
   const app = new Hono<{ Variables: { requestId: string } }>();
@@ -51,12 +55,15 @@ export function createApp(
       'Request completed',
     );
   });
-  
+
   app.use('/api/*', cors({ origin: config.WEB_ORIGIN }));
 
   app.get('/health', (c) =>
     c.json(HealthResponseSchema.parse({ status: 'ok' })),
   );
+
+  if (dependencies.tags)
+    app.route('/api/v1/tags', tagRoutes(new TagService(dependencies.tags)));
 
   if (dependencies.activities)
     app.route(

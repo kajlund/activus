@@ -9,7 +9,7 @@ const makeApp = () =>
 
 describe('API foundation', () => {
   it('returns the shared health contract and a request ID', async () => {
-    const response = await makeApp().request('/api/health');
+    const response = await makeApp().request('/health');
     expect(response.status).toBe(200);
     expect(HealthResponseSchema.parse(await response.json())).toEqual({
       status: 'ok',

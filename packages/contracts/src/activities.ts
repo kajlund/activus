@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { MeasurementUnitIdSchema } from './measurement-units.js';
 import { activityKindIconNames } from './activity-kinds.js';
+import { ActivityTagIdsSchema, TagSummarySchema } from './tags.js';
 
 const id = z.uuid().transform((v) => v.toLowerCase());
 export const ActivityDateSchema = z.iso
@@ -92,6 +93,7 @@ const common = z.strictObject({
   isPartial: z.boolean(),
 });
 export const CreateActivityRequestSchema = common.extend({
+  tagIds: ActivityTagIdsSchema.default([]),
   activityVariantId: common.shape.activityVariantId.default(null),
   startedAt: common.shape.startedAt.default(null),
   durationSeconds: common.shape.durationSeconds.default(null),
@@ -104,7 +106,10 @@ export const CreateActivityRequestSchema = common.extend({
 });
 export type CreateActivityRequest = z.infer<typeof CreateActivityRequestSchema>;
 export const UpdateActivityRequestSchema = common
-  .extend({ measurements: z.array(ActivityMeasurementInputSchema).max(200) })
+  .extend({
+    measurements: z.array(ActivityMeasurementInputSchema).max(200),
+    tagIds: ActivityTagIdsSchema,
+  })
   .partial()
   .refine(
     (v) => Object.values(v).some((x) => x !== undefined),
@@ -163,6 +168,7 @@ export const ActivityMeasurementSchema = z.discriminatedUnion('valueType', [
 ]);
 export type ActivityMeasurement = z.infer<typeof ActivityMeasurementSchema>;
 export const ActivitySchema = common.extend({
+  tags: z.array(TagSummarySchema),
   id: z.uuid(),
   kind: ActivityKindSummarySchema,
   variant: ActivityVariantSummarySchema.nullable(),
@@ -172,6 +178,7 @@ export const ActivitySchema = common.extend({
 });
 export type Activity = z.infer<typeof ActivitySchema>;
 export const ActivitySummarySchema = ActivitySchema.pick({
+  tags: true,
   id: true,
   activityDate: true,
   startedAt: true,
@@ -198,6 +205,19 @@ const integerQuery = (min: number, max: number) =>
 export const ActivityListQuerySchema = z
   .strictObject({
     dateFrom: ActivityDateSchema.optional(),
+    tagIds: z
+      .string()
+      .min(1)
+      .max(3699)
+      .transform((v) => v.split(','))
+      .pipe(
+        ActivityTagIdsSchema.min(1).refine(
+          (v) => new Set(v).size === v.length,
+          'Duplicate tag IDs',
+        ),
+      )
+      .optional(),
+    tagMatch: z.enum(['any', 'all']).optional(),
     dateTo: ActivityDateSchema.optional(),
     activityKindId: id.optional(),
     activityVariantId: id.optional(),
@@ -212,7 +232,8 @@ export const ActivityListQuerySchema = z
   .refine(
     (v) => !v.dateFrom || !v.dateTo || v.dateFrom <= v.dateTo,
     'Reversed date range',
-  );
+  )
+  .refine((v) => !v.tagMatch || !!v.tagIds?.length, 'tagMatch requires tagIds');
 export type ActivityListQuery = z.infer<typeof ActivityListQuerySchema>;
 export const ActivityPaginationSchema = z.strictObject({
   limit: z.number().int(),

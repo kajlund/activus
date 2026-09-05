@@ -5,6 +5,7 @@ import {
   measurementUnits,
 } from '@activus/contracts';
 import type { ActivityBundle } from './model.js';
+import { toTagSummary } from '../tags/mapper.js';
 import { decimal, decimalString, divideForDisplay } from './decimal.js';
 
 export function toActivityMeasurement({
@@ -63,6 +64,7 @@ export function toActivity(bundle: ActivityBundle) {
       ? { id: v.id, name: v.name, isArchived: v.archivedAt !== null }
       : null,
     measurements: bundle.measurements.map(toActivityMeasurement),
+    tags: bundle.tags.map(toTagSummary),
   });
 }
 export function toActivitySummary(bundle: ActivityBundle) {
@@ -83,6 +85,7 @@ export function toActivitySummary(bundle: ActivityBundle) {
     durationSeconds: a.durationSeconds,
     isPartial: a.isPartial,
     hasNotes: a.notes !== null,
+    tags: a.tags,
     primaryMeasurement,
     fallback:
       !primaryMeasurement && a.durationSeconds !== null
