@@ -15,9 +15,20 @@ export class ActivusApp extends LitElement {
   static override properties = { location: { state: true } };
   private location = window.location.pathname + window.location.search;
   private readonly onLocation = () => {
+    if (
+      !window.dispatchEvent(
+        new Event('before-route-change', { cancelable: true }),
+      )
+    ) {
+      window.history.pushState(null, '', this.location);
+      return;
+    }
     this.location = window.location.pathname + window.location.search;
-    const drawer = this.renderRoot.querySelector('details'); if (drawer && !this.desktop?.matches) drawer.open = false;
-    void this.updateComplete.then(() => this.renderRoot.querySelector<HTMLElement>('main')?.focus());
+    const drawer = this.renderRoot.querySelector('details');
+    if (drawer && !this.desktop?.matches) drawer.open = false;
+    void this.updateComplete.then(() =>
+      this.renderRoot.querySelector<HTMLElement>('main')?.focus(),
+    );
   };
   private readonly desktop = window.matchMedia?.('(min-width: 769px)');
   private readonly syncNavigation = () => {
@@ -120,14 +131,20 @@ export class ActivusApp extends LitElement {
       position: fixed;
       top: var(--space-3);
       left: var(--space-3);
-      transform: translateY(-200%);
+      clip-path: inset(50%);
+      width: 1px;
+      height: 1px;
+      overflow: hidden;
       padding: var(--space-3);
       background: var(--color-surface);
       color: var(--color-text);
       z-index: 2;
     }
     .skip:focus {
-      transform: none;
+      clip-path: none;
+      width: auto;
+      height: auto;
+      overflow: visible;
     }
     main {
       padding: var(--space-7);
@@ -190,7 +207,8 @@ export class ActivusApp extends LitElement {
 
   override render() {
     const pathname = new URL(this.location, window.location.origin).pathname;
-    const isKinds = pathname === '/activity-kinds' || pathname.startsWith('/activity-kinds/');
+    const isKinds =
+      pathname === '/activity-kinds' || pathname.startsWith('/activity-kinds/');
     const current = destinations.find(([, path]) => path === pathname);
     return html`
       <a class="skip" href="#main" @click=${this.skipToMain}>Skip to content</a>
@@ -211,7 +229,14 @@ export class ActivusApp extends LitElement {
           </details>
         </aside>
         <main id="main" tabindex="-1">
-          ${isKinds ? html`<activity-kinds-page .route=${this.location}></activity-kinds-page>` : html`<h1>${current?.[0] ?? 'Activus'}</h1><p>This space is ready for your training journal.</p>`}
+          ${
+            isKinds
+              ? html`<activity-kinds-page
+                  .route=${this.location}
+                ></activity-kinds-page>`
+              : html`<h1>${current?.[0] ?? 'Activus'}</h1>
+                  <p>This space is ready for your training journal.</p>`
+          }
         </main>
       </div>
     `;

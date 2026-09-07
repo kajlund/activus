@@ -1,6 +1,6 @@
 # Activus
 
-Activus training journal, through phase 2D: the phase 1 web shell plus PostgreSQL configuration, activity and tag APIs, typed measurement values, filtering, and pagination. Design and architecture are defined in `.doc/visual-design.md` and `.doc/technical-architecture.md`.
+Activus training journal, through phase 3B: PostgreSQL configuration, activity and tag APIs plus a Lit client for activity kinds, variants and measurement configuration. Design and architecture are defined in `.doc/visual-design.md` and `.doc/technical-architecture.md`.
 
 ## Setup
 
@@ -22,20 +22,21 @@ Open <http://localhost:5173>. Vite proxies `/api` to the API on port 3000 (or `P
 
 ## Commands
 
-| Command                            | Purpose                                                       |
-| ---------------------------------- | ------------------------------------------------------------- |
-| `pnpm dev`                         | Start all development watchers                                |
-| `pnpm build`                       | Build contracts, Node API, and static web assets              |
-| `pnpm typecheck`                   | Check all source, tests, and Vite configuration               |
-| `pnpm test`                        | Run API and client Vitest tests                               |
-| `pnpm lint`                        | Run ESLint with zero warnings allowed                         |
-| `pnpm format`                      | Format project files                                          |
-| `pnpm format:check`                | Check formatting                                              |
-| `pnpm --filter @activus/api start` | Run the compiled API after building                           |
-| `pnpm db:generate`                 | Generate SQL and snapshots from the Drizzle schema, offline   |
-| `pnpm db:check`                    | Check Drizzle migration history consistency, offline          |
-| `pnpm db:migrate`                  | Apply committed migrations using validated `DATABASE_URL`     |
-| `pnpm test:db`                     | Run real PostgreSQL tests against guarded `TEST_DATABASE_URL` |
+| Command                            | Purpose                                                                      |
+| ---------------------------------- | ---------------------------------------------------------------------------- |
+| `pnpm dev`                         | Start all development watchers                                               |
+| `pnpm build`                       | Build contracts, Node API, and static web assets                             |
+| `pnpm typecheck`                   | Check all source, tests, and Vite configuration                              |
+| `pnpm test`                        | Run API and client Vitest tests                                              |
+| `pnpm test:browser`                | Run isolated Chrome configuration journeys in four screen/theme combinations |
+| `pnpm lint`                        | Run ESLint with zero warnings allowed                                        |
+| `pnpm format`                      | Format project files                                                         |
+| `pnpm format:check`                | Check formatting                                                             |
+| `pnpm --filter @activus/api start` | Run the compiled API after building                                          |
+| `pnpm db:generate`                 | Generate SQL and snapshots from the Drizzle schema, offline                  |
+| `pnpm db:check`                    | Check Drizzle migration history consistency, offline                         |
+| `pnpm db:migrate`                  | Apply committed migrations using validated `DATABASE_URL`                    |
+| `pnpm test:db`                     | Run real PostgreSQL tests against guarded `TEST_DATABASE_URL`                |
 
 `pnpm test` runs unit, direct Hono API, and client tests without a database or TCP listener. `pnpm test:db` is separate and uses real PostgreSQL, never SQLite or a test double. Client tests use jsdom. Manrope is bundled from a local dependency, with system fallbacks and no font CDN requests.
 
@@ -64,9 +65,17 @@ apps/api/drizzle.config.ts
                      Offline migration generation configuration
 apps/web/
   public/icons/       Approved pulse-shield SVG
-  src/app-shell.ts    Responsive navigation and placeholder content
+  src/app-shell.ts    Responsive navigation and History API routing
+  src/features/activity-kinds/
+                     Kind and variant lists, detail view and reusable forms
+  src/features/measurements/
+                     Parent/effective lists, measurement form and validation
+  src/services/      Typed configuration API client and cached unit metadata
+  src/components/    Dialog focus handling across Lit shadow roots
+  src/routes/        Client navigation helpers
   src/styles/        Approved tokens and local font foundation
-  test/              Shell navigation and keyboard focus tests
+  test/              Shell, API-client and configuration component tests
+  e2e/               Isolated Playwright journeys and HTTP fixture
 packages/contracts/  Health, configuration, activity, tag, unit and error contracts
 scripts/import/      Reserved for the future JSON importer
 drizzle/             Generated SQL migrations and snapshots
@@ -74,7 +83,23 @@ drizzle/             Generated SQL migrations and snapshots
 
 Build output lives in each package's `dist/`. Contracts export compiled JavaScript and TypeScript declarations; they contain only environment-independent transport schemas. The default export condition also lets Drizzle Kit load the same ESM module through Node's supported `require(esm)` bridge. API logs use generated request IDs and omit request bodies, query strings, credentials, and arbitrary exception messages. Error responses use stable codes and request IDs; internal details remain private in every environment.
 
-The web shell follows the six approved navigation labels. Destinations currently render placeholder content only. A mobile navigation disclosure uses native keyboard behavior. Both themes follow `prefers-color-scheme`; motion respects `prefers-reduced-motion`.
+The web shell follows the six approved navigation labels. Activity kinds is implemented; the other destinations remain placeholders. A mobile navigation disclosure uses native keyboard behavior. Both themes follow `prefers-color-scheme`; motion respects `prefers-reduced-motion`.
+
+## Configuration client (phases 3A and 3B)
+
+Open `/activity-kinds` to create, edit, archive and restore kinds. `/activity-kinds/:id` shows kind identity, Measurements, then Variants. Forms use the approved Lucide icon registry and colour palette, with a custom hex option. Variant default changes follow the API: archive clears defaults and restore does not reinstate them. Names remain reserved across archived records. Counts and primary names on the kind list are omitted to avoid per-row requests.
+
+Archived filters live in `archived`, `variantsArchived` and `measurementsArchived` URL parameters. A variant's Measurements link sets `measurementVariant=<uuid>`; refresh, deep links and back/forward work. That view uses the effective endpoint and clearly separates inherited, read-only parent definitions from additional variant definitions. `Edit at parent` returns to the parent measurement list. No inheritance overrides are implemented.
+
+Measurement forms support decimal, integer, duration, rating, yes/no and short text. Required state is a basic field; bounds, precision, aggregation, personal-best direction and numeric display order are under Advanced settings. Unit choices and conversion factors come from cached `/api/v1/measurement-units` metadata. Unitless numbers are explicit. Bounds use the selected display unit, or `h:mm:ss` for duration, and are submitted in canonical units/seconds. Ratings use the API's 1–5 or 1–10 ranges. Integer precision is implicitly zero. Boolean and text definitions submit no numeric settings.
+
+The API does not expose history-use flags. On `MEASUREMENT_DEFINITION_HAS_HISTORY`, the form preserves entered data, explains and locks type, canonical dimension, precision and bounds, and offers **Keep recorded settings** before saving safe edits. This follows the existing API's stricter precision/bounds policy; no backend extension or extra per-row request is needed. PATCH sends only changed fields. Primary actions are limited to eligible active parent numeric/duration/rating definitions; clearing primary is supported. Archiving primary explains that it must first be cleared or replaced. Archive/restore never removes history.
+
+Requests have cancellation, a 15-second timeout, response-schema validation, safe error messages and request IDs. Mutations are never automatically retried. Failed saves preserve forms. Superseded reads cannot overwrite a newer selection. Measurement saves refresh their measurement scope. Native dialogs provide modality, with explicit Tab/Shift+Tab wrapping through shadow roots, Escape handling, first-invalid-field focus and opener focus restoration. Dirty measurement forms require discard confirmation; leaving/reloading also warns. Mobile forms fill the viewport and scroll vertically.
+
+Complete-list transactional reorder endpoints remain deferred by the backend. The client preserves server order and offers ordinary numeric order edits; there is no drag reordering or sequence of per-row reorder writes.
+
+Browser tests use installed Google Chrome (`channel: chrome`). If Chrome is unavailable, install it or run `pnpm --filter @activus/web exec playwright install chrome`. `pnpm test:browser` builds the web client, then starts and stops an isolated Vite preview server on port 4173. Every API request is intercepted by deterministic test-created state; no development or production database is accessed. Screenshots and failure traces are written under `.artifacts/phase-3a/` for both phases. Tests run at 1440×1000 and 390×844 in light and dark themes. Static production hosting will need an SPA fallback for deep links when deployment is implemented.
 
 ## PostgreSQL setup and migrations
 
@@ -277,4 +302,4 @@ Guards require a database named `activus_test` or `activus_test_...`, the role `
 
 Bulk reordering remains deferred: phase 2A did not establish a complete-list reorder pattern. Ordinary `sortOrder` edits remain available. Explicit inherited-definition overrides/hiding are deferred until their semantics are designed. Optional development seeds remain deferred; migrations contain no opinionated kinds.
 
-Goals (including tag-scoped goals), progress and personal-best calculations, tag analytics/grouping, authentication, legacy import, activity UI and management UI are not implemented. Per-tag activity counts, deployment, Docker and chart selection remain deferred. No Git repository or Git configuration is initialized or changed.
+Goals (including tag-scoped goals), progress and personal-best calculations, tag analytics/grouping, authentication, legacy import, activity UI and tag management UI are not implemented. Per-tag activity counts, deployment, Docker and chart selection remain deferred. No Git repository or Git configuration is initialized or changed.

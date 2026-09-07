@@ -17,8 +17,8 @@
     "db:generate": "pnpm --filter @activus/contracts build && pnpm --filter @activus/api db:generate",
     "db:migrate": "pnpm --filter @activus/contracts build && pnpm --filter @activus/api db:migrate",
     "db:check": "pnpm --filter @activus/api db:check",
-    "test:db": "pnpm --filter @activus/contracts build && pnpm --filter @activus/api test:db"
-    ,"test:browser": "pnpm --filter @activus/contracts build && pnpm --filter @activus/web test:browser"
+    "test:db": "pnpm --filter @activus/contracts build && pnpm --filter @activus/api test:db",
+    "test:browser": "pnpm --filter @activus/contracts build && pnpm --filter @activus/web build && pnpm --filter @activus/web test:browser"
   },
   "devDependencies": {
     "@eslint/js": "10.0.1",
