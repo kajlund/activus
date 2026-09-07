@@ -1,6 +1,6 @@
 # Activus
 
-Activus training journal, through phase 3B: PostgreSQL configuration, activity and tag APIs plus a Lit client for activity kinds, variants and measurement configuration. Design and architecture are defined in `.doc/visual-design.md` and `.doc/technical-architecture.md`.
+Activus training journal, through phase 3C: PostgreSQL configuration, activity and tag APIs plus a Lit client for activity kinds, variants, measurements and tag management. Design and architecture are defined in `.doc/visual-design.md` and `.doc/technical-architecture.md`.
 
 ## Setup
 
@@ -70,6 +70,7 @@ apps/web/
                      Kind and variant lists, detail view and reusable forms
   src/features/measurements/
                      Parent/effective lists, measurement form and validation
+  src/features/tags/  Tag list, URL filters, lifecycle dialogs and name/colour form
   src/services/      Typed configuration API client and cached unit metadata
   src/components/    Dialog focus handling across Lit shadow roots
   src/routes/        Client navigation helpers
@@ -83,7 +84,7 @@ drizzle/             Generated SQL migrations and snapshots
 
 Build output lives in each package's `dist/`. Contracts export compiled JavaScript and TypeScript declarations; they contain only environment-independent transport schemas. The default export condition also lets Drizzle Kit load the same ESM module through Node's supported `require(esm)` bridge. API logs use generated request IDs and omit request bodies, query strings, credentials, and arbitrary exception messages. Error responses use stable codes and request IDs; internal details remain private in every environment.
 
-The web shell follows the six approved navigation labels. Activity kinds is implemented; the other destinations remain placeholders. A mobile navigation disclosure uses native keyboard behavior. Both themes follow `prefers-color-scheme`; motion respects `prefers-reduced-motion`.
+The web shell follows the six approved navigation labels. Activity kinds is implemented, and Settings links to configuration management, including Tags. The other destinations remain placeholders. A mobile navigation disclosure uses native keyboard behavior. Both themes follow `prefers-color-scheme`; motion respects `prefers-reduced-motion`.
 
 ## Configuration client (phases 3A and 3B)
 
@@ -298,8 +299,20 @@ Set `TEST_DATABASE_URL=postgresql://activus_test:YOUR_PASSWORD@localhost:5432/ac
 
 Guards require a database named `activus_test` or `activus_test_...`, the role `activus_test`, no URL query overrides, non-production `NODE_ENV`, and a database name different from `DATABASE_URL` even when hostnames differ. The suite verifies the actual database/role and refuses superuser, database-creator or role-creator connections before migrating. It applies committed migrations only to this test database and removes only UUIDs it inserted; it never drops or truncates a database/schema/table. Without `TEST_DATABASE_URL`, the database suite reports explicit skips. An unsafe URL or a configured but unreachable database fails rather than silently skipping.
 
-## Deferred after phase 2D
+## Tag management client (phase 3C)
+
+Open **Settings → Tags** to reach `/tags`. Tags add optional context across activity kinds; variants remain the place for structured forms such as Outdoor or Treadmill. The six primary navigation labels remain unchanged, with Settings selected on the Tags route.
+
+Create and edit a name plus optional colour. The name limit and trimming come from shared contracts. The form offers six approved palette colours and **No colour**, with native keyboard-operable radio choices and a text selection indicator. Existing API-provided custom colours can be retained or cleared, but no unrestricted picker is introduced. Swatches carry colour while text uses theme tokens. No icons, categories, descriptions, ordering or activity counts are added.
+
+Search uses a 300 ms debounce and the existing case-insensitive tag API. `search` and `archived=true` stay in the URL for refresh and back/forward navigation; query updates retain search focus. Superseded requests are cancelled and cannot overwrite newer results. The last loaded list remains during a background request or recoverable read error. Search stays visible even for small lists to keep filters stable. Only an empty unfiltered active list performs one additional include-archived read to distinguish first use from an entirely archived collection. There are no per-tag requests for counts.
+
+Archive/restore use confirmation dialogs and preserve historical associations. Names remain reserved across archived tags under the existing backend policy; conflicts preserve entered data and show request IDs. PATCH sends changed fields only, including explicit `color: null` when clearing colour. Duplicate submissions are blocked and mutations never retry automatically. Dialogs retain the existing focus trap, Escape, dirty-discard warning and focus-restoration conventions. A removed row returns focus to the page heading.
+
+`pnpm test` covers the typed client and tag components. `pnpm test:browser` adds tag creation/editing, archive/restore, search/history and error-state journeys to the existing configuration suite. Browser data uses the same isolated HTTP fixtures as phases 3A/B, never the development database. The retained `.artifacts/phase-3a/` directory also contains `tags-*` screenshots for this phase. See `.doc/phase-3c-tag-management-report.md` for results and implementation details.
+
+## Deferred after phase 3C
 
 Bulk reordering remains deferred: phase 2A did not establish a complete-list reorder pattern. Ordinary `sortOrder` edits remain available. Explicit inherited-definition overrides/hiding are deferred until their semantics are designed. Optional development seeds remain deferred; migrations contain no opinionated kinds.
 
-Goals (including tag-scoped goals), progress and personal-best calculations, tag analytics/grouping, authentication, legacy import, activity UI and tag management UI are not implemented. Per-tag activity counts, deployment, Docker and chart selection remain deferred. No Git repository or Git configuration is initialized or changed.
+Tag assignment and activity-entry UI belong to phase 3D. The activity journal, goals (including tag-scoped goals), progress and personal-best calculations, tag analytics/grouping, authentication and legacy import remain deferred. Per-tag activity counts, deployment, Docker and chart selection remain deferred. No Git repository or Git configuration is initialized or changed.

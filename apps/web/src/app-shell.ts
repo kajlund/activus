@@ -1,6 +1,7 @@
 import { LitElement, css, html } from 'lit';
 import { interceptNavigation } from './routes/navigation.js';
 import './features/activity-kinds/page.js';
+import './features/tags/page.js';
 
 const destinations = [
   ['Overview', '/'],
@@ -23,12 +24,16 @@ export class ActivusApp extends LitElement {
       window.history.pushState(null, '', this.location);
       return;
     }
+    const pathChanged =
+      new URL(this.location, window.location.origin).pathname !==
+      window.location.pathname;
     this.location = window.location.pathname + window.location.search;
     const drawer = this.renderRoot.querySelector('details');
-    if (drawer && !this.desktop?.matches) drawer.open = false;
-    void this.updateComplete.then(() =>
-      this.renderRoot.querySelector<HTMLElement>('main')?.focus(),
-    );
+    if (pathChanged && drawer && !this.desktop?.matches) drawer.open = false;
+    if (pathChanged)
+      void this.updateComplete.then(() =>
+        this.renderRoot.querySelector<HTMLElement>('main')?.focus(),
+      );
   };
   private readonly desktop = window.matchMedia?.('(min-width: 769px)');
   private readonly syncNavigation = () => {
@@ -54,6 +59,25 @@ export class ActivusApp extends LitElement {
   }
 
   static override styles = css`
+    .settings {
+      max-width: 960px;
+      margin: 0 auto;
+    }
+    .settings ul {
+      list-style: none;
+      padding: 0;
+      margin: var(--space-6) 0 0;
+      border-top: 1px solid var(--color-border);
+    }
+    .settings li {
+      border-bottom: 1px solid var(--color-border);
+    }
+    .settings li a {
+      display: block;
+      padding: var(--space-4);
+      min-height: 44px;
+      color: var(--color-primary);
+    }
     :host {
       display: block;
     }
@@ -223,7 +247,7 @@ export class ActivusApp extends LitElement {
             <summary>Navigation</summary>
             <nav aria-label="Primary">
               <ul>
-                ${destinations.map(([label, path]) => html`<li><a href=${path} aria-current=${(path === '/activity-kinds' ? isKinds : pathname === path) ? 'page' : 'false'}>${label}</a></li>`)}
+                ${destinations.map(([label, path]) => html`<li><a href=${path} aria-current=${(path === '/activity-kinds' ? isKinds : path === '/settings' ? pathname === '/settings' || pathname === '/tags' : pathname === path) ? 'page' : 'false'}>${label}</a></li>`)}
               </ul>
             </nav>
           </details>
@@ -234,8 +258,23 @@ export class ActivusApp extends LitElement {
               ? html`<activity-kinds-page
                   .route=${this.location}
                 ></activity-kinds-page>`
-              : html`<h1>${current?.[0] ?? 'Activus'}</h1>
-                  <p>This space is ready for your training journal.</p>`
+              : pathname === '/tags'
+                ? html`<tags-page .route=${this.location}></tags-page>`
+                : pathname === '/settings'
+                  ? html`<div class="settings">
+                      <h1>Settings</h1>
+                      <p>Manage the configuration used by your journal.</p>
+                      <ul aria-label="Configuration">
+                        <li>
+                          <a href="/activity-kinds"
+                            >Activity kinds and measurements</a
+                          >
+                        </li>
+                        <li><a href="/tags">Tags</a></li>
+                      </ul>
+                    </div>`
+                  : html`<h1>${current?.[0] ?? 'Activus'}</h1>
+                      <p>This space is ready for your training journal.</p>`
           }
         </main>
       </div>

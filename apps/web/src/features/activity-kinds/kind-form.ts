@@ -10,14 +10,7 @@ import {
 } from '../../services/configuration-api.js';
 import { managementStyles } from './styles.js';
 import { activityIcon, iconLabels } from './icons.js';
-const palette = [
-  ['Purple', '#67318F'],
-  ['Blue', '#527FA5'],
-  ['Clay', '#A66B3F'],
-  ['Lavender', '#8069A5'],
-  ['Sand', '#9A7650'],
-  ['Rose', '#A15467'],
-] as const;
+import { chartColours as palette } from '../../components/chart-colours.js';
 export class KindForm extends LitElement {
   static override properties = {
     kind: { attribute: false },

@@ -13,6 +13,29 @@ import {
 } from '@activus/contracts';
 import type { z } from 'zod';
 import {
+  TagSchema,
+  TagListResponseSchema,
+  type Tag,
+  type TagListResponse,
+  type CreateTagRequest,
+  type UpdateTagRequest,
+} from '@activus/contracts';
+export interface TagApi {
+  listTags(
+    archived: boolean,
+    search?: string,
+    signal?: AbortSignal,
+  ): Promise<TagListResponse>;
+  createTag(input: CreateTagRequest, signal?: AbortSignal): Promise<Tag>;
+  updateTag(
+    id: string,
+    input: UpdateTagRequest,
+    signal?: AbortSignal,
+  ): Promise<Tag>;
+  archiveTag(id: string, signal?: AbortSignal): Promise<Tag>;
+  restoreTag(id: string, signal?: AbortSignal): Promise<Tag>;
+}
+import {
   MeasurementDefinitionSchema,
   MeasurementDefinitionListResponseSchema,
   MeasurementUnitListResponseSchema,
@@ -68,6 +91,9 @@ export class ClientError extends Error {
   }
 }
 const messages: Record<string, string> = {
+  TAG_NAME_CONFLICT:
+    'This name is already used by a tag, including archived tags. Choose another name or restore the existing tag.',
+  TAG_INVALID: 'Check the tag name and colour, then try again.',
   MEASUREMENT_DEFINITION_HAS_HISTORY:
     'Activities already use this measurement. Type, unit dimension, precision and bounds cannot change. Keep those settings and save your other changes, or archive and replace the measurement.',
   MEASUREMENT_DEFINITION_IS_PRIMARY:
@@ -145,7 +171,7 @@ export interface ConfigurationApi {
 }
 export function createConfigurationApi(
   options: { fetch?: typeof fetch; baseUrl?: string; timeoutMs?: number } = {},
-): ConfigurationApi & MeasurementApi {
+): ConfigurationApi & MeasurementApi & TagApi {
   const transport =
     options.fetch ?? ((...args: Parameters<typeof fetch>) => fetch(...args));
   async function request<T>(
@@ -227,6 +253,40 @@ export function createConfigurationApi(
     `/measurement-definitions/${encodeURIComponent(id)}`;
   let units: Promise<{ items: MeasurementUnit[] }> | undefined;
   return {
+    listTags: (archived, search, signal) =>
+      request(
+        `/tags?includeArchived=${archived}${search?.trim() ? `&search=${encodeURIComponent(search.trim())}` : ''}`,
+        TagListResponseSchema,
+        'GET',
+        undefined,
+        signal,
+      ),
+    createTag: (input, signal) =>
+      request('/tags', TagSchema, 'POST', input, signal),
+    updateTag: (id, input, signal) =>
+      request(
+        `/tags/${encodeURIComponent(id)}`,
+        TagSchema,
+        'PATCH',
+        input,
+        signal,
+      ),
+    archiveTag: (id, signal) =>
+      request(
+        `/tags/${encodeURIComponent(id)}/archive`,
+        TagSchema,
+        'POST',
+        undefined,
+        signal,
+      ),
+    restoreTag: (id, signal) =>
+      request(
+        `/tags/${encodeURIComponent(id)}/restore`,
+        TagSchema,
+        'POST',
+        undefined,
+        signal,
+      ),
     units: () =>
       (units ??= request(
         '/measurement-units',

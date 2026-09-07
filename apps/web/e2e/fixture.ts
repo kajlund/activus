@@ -4,6 +4,11 @@ import {
 } from '@activus/contracts';
 import { type Page } from '@playwright/test';
 import { MemoryConfigurationApi } from '../test/support/configuration-api.js';
+import { MemoryTagApi } from '../test/support/tag-api.js';
+import {
+  CreateTagRequestSchema,
+  UpdateTagRequestSchema,
+} from '@activus/contracts';
 import { ClientError } from '../src/services/configuration-api.js';
 import {
   CreateActivityKindRequestSchema,
@@ -13,6 +18,7 @@ import {
 } from '@activus/contracts';
 export async function fixture(page: Page) {
   const api = new MemoryConfigurationApi();
+  const tags = new MemoryTagApi();
   // Isolated test-created API state. No request reaches the development database.
   await page.route('**/api/**', async (route) => {
     const request = route.request();
@@ -24,7 +30,30 @@ export async function fixture(page: Page) {
     const requestId = crypto.randomUUID();
     try {
       let body: unknown;
-      if (path[0] === 'activity-kinds') {
+      if (path[0] === 'tags') {
+        if (!id)
+          body =
+            method === 'GET'
+              ? await tags.listTags(
+                  url.searchParams.get('includeArchived') === 'true',
+                  url.searchParams.get('search') ?? undefined,
+                )
+              : await tags.createTag(
+                  CreateTagRequestSchema.parse(request.postDataJSON()),
+                );
+        else
+          body =
+            operation === 'archive'
+              ? await tags.archiveTag(id)
+              : operation === 'restore'
+                ? await tags.restoreTag(id)
+                : method === 'GET'
+                  ? await tags.getTag(id)
+                  : await tags.updateTag(
+                      id,
+                      UpdateTagRequestSchema.parse(request.postDataJSON()),
+                    );
+      } else if (path[0] === 'activity-kinds') {
         if (!id)
           body =
             method === 'GET'
@@ -125,5 +154,5 @@ export async function fixture(page: Page) {
       });
     }
   });
-  return api;
+  return Object.assign(api, { tags });
 }
