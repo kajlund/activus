@@ -1,6 +1,6 @@
 # Activus
 
-Activus training journal, through phase 3C: PostgreSQL configuration, activity and tag APIs plus a Lit client for activity kinds, variants, measurements and tag management. Design and architecture are defined in `.doc/visual-design.md` and `.doc/technical-architecture.md`.
+Activus training journal, through phase 3D: PostgreSQL configuration, activity and tag APIs plus a Lit client for configuration management and activity creation/editing. Design and architecture are defined in `.doc/visual-design.md` and `.doc/technical-architecture.md`.
 
 ## Setup
 
@@ -71,6 +71,8 @@ apps/web/
   src/features/measurements/
                      Parent/effective lists, measurement form and validation
   src/features/tags/  Tag list, URL filters, lifecycle dialogs and name/colour form
+  src/features/activities/
+                     Activity editor, tag multi-select and exact value parsing
   src/services/      Typed configuration API client and cached unit metadata
   src/components/    Dialog focus handling across Lit shadow roots
   src/routes/        Client navigation helpers
@@ -311,8 +313,22 @@ Archive/restore use confirmation dialogs and preserve historical associations. N
 
 `pnpm test` covers the typed client and tag components. `pnpm test:browser` adds tag creation/editing, archive/restore, search/history and error-state journeys to the existing configuration suite. Browser data uses the same isolated HTTP fixtures as phases 3A/B, never the development database. The retained `.artifacts/phase-3a/` directory also contains `tags-*` screenshots for this phase. See `.doc/phase-3c-tag-management-report.md` for results and implementation details.
 
-## Deferred after phase 3C
+## Activity entry (phase 3D)
+
+Use the global **Record activity** action to open `/activities/new`. Edit an existing record at `/activities/:id/edit`. The six navigation labels remain unchanged, with Activities selected for both routes. Saving temporarily opens `/activities/:id/edit?saved=1`, reloads the saved record and announces **Activity saved**. Cancel returns to the Activities placeholder. Journal browsing and a detail page belong to phase 3E.
+
+The phase 3D prompt explicitly selects a page-level form, superseding the earlier desktop dialog/panel presentation. Entry uses active kinds, an optional variant with its real configured default, a journal date, optional duration, configuration-driven measurements, active tags and optional plain-text notes. Start timestamp, name, effort and feeling are optional details. No duration or measurements are invented. Native selectors provide keyboard type-ahead; tag checkboxes support search and selected-tag removal.
+
+Journal dates are submitted unchanged as `YYYY-MM-DD`. Optional start date/time uses the browser timezone, rejects nonexistent daylight-saving times and offers first/second occurrence for repeated times. It becomes a UTC timestamp independently of the journal day. Unchanged stored timestamps retain their original exact instant and milliseconds. Duration uses whole hours/minutes/seconds, preserving existing seconds; all blank means unknown, while zero remains valid under the existing contract.
+
+Measurements use the existing effective configuration endpoint and server ordering. Display units stay fixed; decimal text (including a single decimal comma) converts exactly to canonical units with base-ten arithmetic and shared constraints. `hour-minute` uses `hours:minutes[:seconds]`. Unmodified historical values use their exact canonical values rather than rounded display strings. Archived references remain visible when already attached. Temporarily hidden values survive kind/variant switches, are identified beside the form, and require confirmation before exclusion on save. Partial historical records retain their existing completeness status.
+
+PATCH sends changed common fields only, preserving immutable and omitted metadata. Measurement and tag replacement sets are independent. The API has transactional writes but no optimistic revision/ETag contract; phase 3D does not invent one. Safe reads have explicit retry; mutations never retry automatically. Failed saves keep entered data and request IDs. Navigation, cancel, back and refresh/close use the established unsaved-changes protection.
+
+Tests include the real Hono routes and services backed by isolated repository doubles. Browser requests never reach the development database. Screenshots remain under `.artifacts/phase-3a/activity-entry-*` for compatibility with the existing runner. See `.doc/phase-3d-activity-entry-report.md` for verification and phase 3E handoff details.
+
+## Deferred after phase 3D
 
 Bulk reordering remains deferred: phase 2A did not establish a complete-list reorder pattern. Ordinary `sortOrder` edits remain available. Explicit inherited-definition overrides/hiding are deferred until their semantics are designed. Optional development seeds remain deferred; migrations contain no opinionated kinds.
 
-Tag assignment and activity-entry UI belong to phase 3D. The activity journal, goals (including tag-scoped goals), progress and personal-best calculations, tag analytics/grouping, authentication and legacy import remain deferred. Per-tag activity counts, deployment, Docker and chart selection remain deferred. No Git repository or Git configuration is initialized or changed.
+The phase 3E activity journal, goals (including tag-scoped goals), progress and personal-best calculations, tag analytics/grouping, authentication and legacy import remain deferred. Per-tag activity counts, deployment, Docker and chart selection remain deferred. No Git repository or Git configuration is initialized or changed.

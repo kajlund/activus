@@ -2,6 +2,7 @@ import { LitElement, css, html } from 'lit';
 import { interceptNavigation } from './routes/navigation.js';
 import './features/activity-kinds/page.js';
 import './features/tags/page.js';
+import './features/activities/page.js';
 
 const destinations = [
   ['Overview', '/'],
@@ -62,6 +63,18 @@ export class ActivusApp extends LitElement {
     .settings {
       max-width: 960px;
       margin: 0 auto;
+    }
+    .record {
+      display: inline-flex;
+      min-height: 44px;
+      align-items: center;
+      margin-top: var(--space-5);
+      padding: var(--space-3) var(--space-4);
+      background: var(--color-primary);
+      color: var(--color-surface);
+      border-radius: var(--radius-md);
+      text-decoration: none;
+      font-weight: 600;
     }
     .settings ul {
       list-style: none;
@@ -247,34 +260,40 @@ export class ActivusApp extends LitElement {
             <summary>Navigation</summary>
             <nav aria-label="Primary">
               <ul>
-                ${destinations.map(([label, path]) => html`<li><a href=${path} aria-current=${(path === '/activity-kinds' ? isKinds : path === '/settings' ? pathname === '/settings' || pathname === '/tags' : pathname === path) ? 'page' : 'false'}>${label}</a></li>`)}
+                ${destinations.map(([label, path]) => html`<li><a href=${path} aria-current=${(path === '/activity-kinds' ? isKinds : path === '/activities' ? pathname === '/activities' || pathname.startsWith('/activities/') : path === '/settings' ? pathname === '/settings' || pathname === '/tags' : pathname === path) ? 'page' : 'false'}>${label}</a></li>`)}
               </ul>
             </nav>
           </details>
+          <a class="record" href="/activities/new">Record activity</a>
         </aside>
         <main id="main" tabindex="-1">
           ${
-            isKinds
-              ? html`<activity-kinds-page
+            pathname === '/activities/new' ||
+            /^\/activities\/[^/]+\/edit$/.test(pathname)
+              ? html`<activity-editor-page
                   .route=${this.location}
-                ></activity-kinds-page>`
-              : pathname === '/tags'
-                ? html`<tags-page .route=${this.location}></tags-page>`
-                : pathname === '/settings'
-                  ? html`<div class="settings">
-                      <h1>Settings</h1>
-                      <p>Manage the configuration used by your journal.</p>
-                      <ul aria-label="Configuration">
-                        <li>
-                          <a href="/activity-kinds"
-                            >Activity kinds and measurements</a
-                          >
-                        </li>
-                        <li><a href="/tags">Tags</a></li>
-                      </ul>
-                    </div>`
-                  : html`<h1>${current?.[0] ?? 'Activus'}</h1>
-                      <p>This space is ready for your training journal.</p>`
+                ></activity-editor-page>`
+              : isKinds
+                ? html`<activity-kinds-page
+                    .route=${this.location}
+                  ></activity-kinds-page>`
+                : pathname === '/tags'
+                  ? html`<tags-page .route=${this.location}></tags-page>`
+                  : pathname === '/settings'
+                    ? html`<div class="settings">
+                        <h1>Settings</h1>
+                        <p>Manage the configuration used by your journal.</p>
+                        <ul aria-label="Configuration">
+                          <li>
+                            <a href="/activity-kinds"
+                              >Activity kinds and measurements</a
+                            >
+                          </li>
+                          <li><a href="/tags">Tags</a></li>
+                        </ul>
+                      </div>`
+                    : html`<h1>${current?.[0] ?? 'Activus'}</h1>
+                        <p>This space is ready for your training journal.</p>`
           }
         </main>
       </div>

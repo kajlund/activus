@@ -13,6 +13,25 @@ import {
 } from '@activus/contracts';
 import type { z } from 'zod';
 import {
+  ActivitySchema,
+  type Activity,
+  type CreateActivityRequest,
+  type UpdateActivityRequest,
+  type ApiErrorResponse,
+} from '@activus/contracts';
+export interface ActivityApi {
+  getActivity(id: string, signal?: AbortSignal): Promise<Activity>;
+  createActivity(
+    input: CreateActivityRequest,
+    signal?: AbortSignal,
+  ): Promise<Activity>;
+  updateActivity(
+    id: string,
+    input: UpdateActivityRequest,
+    signal?: AbortSignal,
+  ): Promise<Activity>;
+}
+import {
   TagSchema,
   TagListResponseSchema,
   type Tag,
@@ -86,11 +105,23 @@ export class ClientError extends Error {
     public readonly kind: ClientErrorKind,
     public readonly code: string,
     public readonly requestId?: string,
+    public readonly details?: ApiErrorResponse['error']['details'],
   ) {
     super(code);
   }
 }
 const messages: Record<string, string> = {
+  ACTIVITY_REQUIRED_MEASUREMENT_MISSING:
+    'Enter the required measurements marked below.',
+  ACTIVITY_MEASUREMENT_VALUE_INVALID:
+    'Review measurement values, units, ranges and precision. Your entries have been kept.',
+  ACTIVITY_MEASUREMENTS_INCOMPATIBLE:
+    'The current configuration does not accept some measurements. Review the kind and variant before saving again.',
+  HISTORICAL_DEFINITION_MISSING:
+    'Some stored measurement definitions could not be loaded. Saving is unavailable until their configuration can be read.',
+  TAG_ARCHIVED:
+    'A selected tag has been archived. Remove it before saving, unless it was already attached to this activity.',
+  ACTIVITY_TAG_INVALID: 'Choose up to 100 available tags.',
   TAG_NAME_CONFLICT:
     'This name is already used by a tag, including archived tags. Choose another name or restore the existing tag.',
   TAG_INVALID: 'Check the tag name and colour, then try again.',
@@ -171,7 +202,7 @@ export interface ConfigurationApi {
 }
 export function createConfigurationApi(
   options: { fetch?: typeof fetch; baseUrl?: string; timeoutMs?: number } = {},
-): ConfigurationApi & MeasurementApi & TagApi {
+): ConfigurationApi & MeasurementApi & TagApi & ActivityApi {
   const transport =
     options.fetch ?? ((...args: Parameters<typeof fetch>) => fetch(...args));
   async function request<T>(
@@ -222,6 +253,7 @@ export function createConfigurationApi(
                 : 'unexpected',
           parsed.data.error.code,
           parsed.data.error.requestId,
+          parsed.data.error.details,
         );
       }
       const parsed = schema.safeParse(body);
@@ -253,6 +285,24 @@ export function createConfigurationApi(
     `/measurement-definitions/${encodeURIComponent(id)}`;
   let units: Promise<{ items: MeasurementUnit[] }> | undefined;
   return {
+    getActivity: (id, signal) =>
+      request(
+        `/activities/${encodeURIComponent(id)}`,
+        ActivitySchema,
+        'GET',
+        undefined,
+        signal,
+      ),
+    createActivity: (input, signal) =>
+      request('/activities', ActivitySchema, 'POST', input, signal),
+    updateActivity: (id, input, signal) =>
+      request(
+        `/activities/${encodeURIComponent(id)}`,
+        ActivitySchema,
+        'PATCH',
+        input,
+        signal,
+      ),
     listTags: (archived, search, signal) =>
       request(
         `/tags?includeArchived=${archived}${search?.trim() ? `&search=${encodeURIComponent(search.trim())}` : ''}`,
