@@ -74,7 +74,7 @@ test('create with measurements and multiple tags, then edit and verify persisted
     .getByRole('button', { name: 'Save activity', exact: true })
     .click();
   await expect(
-    page.getByRole('heading', { name: 'Edit activity' }),
+    page.getByRole('link', { name: 'Edit activity', exact: true }),
   ).toBeVisible();
   await expect(
     page.getByRole('status').filter({ hasText: 'Activity saved.' }),
@@ -84,6 +84,7 @@ test('create with measurements and multiple tags, then edit and verify persisted
     '4125.67',
   );
   expect((await f.api.getActivity(id)).tags).toHaveLength(2);
+  await page.getByRole('link', { name: 'Edit activity', exact: true }).click();
   await page.getByLabel('Minutes', { exact: true }).fill('26');
   await page
     .getByLabel('Notes (optional)', { exact: true })
@@ -101,9 +102,7 @@ test('create with measurements and multiple tags, then edit and verify persisted
     'Commute',
   ]);
   await page.reload();
-  await expect(
-    page.getByLabel('Notes (optional)', { exact: true }),
-  ).toHaveValue('Revised note');
+  await expect(page.getByText('Revised note', { exact: true })).toBeVisible();
   await shot(page, info, 'edit-saved');
 });
 test('switch variants, recover values, exclude incompatible measurements and protect dirty navigation', async ({
@@ -140,7 +139,7 @@ test('switch variants, recover values, exclude incompatible measurements and pro
   await page
     .getByRole('button', { name: 'Save activity', exact: true })
     .click();
-  await expect(page).toHaveURL(/\/edit\?saved=1$/);
+  await expect(page).toHaveURL(/\/activities\/[0-9a-f-]+\?.*saved=1$/);
   const a = await f.api.getActivity(
     new URL(page.url()).pathname.split('/')[2]!,
   );
@@ -239,7 +238,7 @@ test('loading, no variants or measurements, and no tags remain calm and actionab
   await page
     .getByRole('button', { name: 'Save activity', exact: true })
     .click();
-  await expect(page).toHaveURL(/\/edit\?saved=1$/);
+  await expect(page).toHaveURL(/\/activities\/[0-9a-f-]+\?.*saved=1$/);
 });
 test('long configuration, typed fields, validation, pending save and save failure', async ({
   page,

@@ -33,6 +33,7 @@ import {
   measurementInput,
 } from './values.js';
 import './tag-picker.js';
+import { safeReturn, withReturn, withNotice } from '../journal/state.js';
 
 export type EditorApi = Pick<ConfigurationApi, 'listKinds' | 'listVariants'> &
   Pick<MeasurementApi, 'listMeasurements'> &
@@ -518,7 +519,25 @@ export class ActivityEditorPage extends LitElement {
       this.initialDraft = structuredClone(this.draft);
       this.initialValues = { ...this.values };
       this.busy = false;
-      const target = `/activities/${saved.id}/edit?saved=1`;
+      const returnTo = safeReturn(
+        new URL(this.route, location.origin).searchParams.get('returnTo'),
+      );
+      const target = this.original
+        ? withNotice(
+            new URL(this.route, location.origin).searchParams.has('returnTo')
+              ? returnTo
+              : `/activities/${saved.id}`,
+            'saved',
+            new URL(returnTo, location.origin).pathname === '/activities' &&
+              new URL(this.route, location.origin).searchParams.has('returnTo')
+              ? saved.id
+              : '1',
+          )
+        : withNotice(
+            withReturn(`/activities/${saved.id}`, returnTo),
+            'saved',
+            '1',
+          );
       if (target === this.route) await this.load();
       else navigate(target);
     } catch (error) {
@@ -818,7 +837,7 @@ export class ActivityEditorPage extends LitElement {
                     ><button
                       type="button"
                       ?disabled=${this.busy}
-                      @click=${() => navigate('/activities')}
+                      @click=${() => navigate(safeReturn(new URL(this.route, location.origin).searchParams.get('returnTo')))}
                     >
                       Cancel
                     </button>

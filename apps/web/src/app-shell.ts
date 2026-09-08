@@ -3,6 +3,9 @@ import { interceptNavigation } from './routes/navigation.js';
 import './features/activity-kinds/page.js';
 import './features/tags/page.js';
 import './features/activities/page.js';
+import './features/journal/page.js';
+import './features/journal/detail.js';
+import { withReturn } from './features/journal/state.js';
 
 const destinations = [
   ['Overview', '/'],
@@ -264,7 +267,11 @@ export class ActivusApp extends LitElement {
               </ul>
             </nav>
           </details>
-          <a class="record" href="/activities/new">Record activity</a>
+          <a
+            class="record"
+            href=${pathname === '/activities' && this.location.includes('?') ? withReturn('/activities/new', this.location) : '/activities/new'}
+            >Record activity</a
+          >
         </aside>
         <main id="main" tabindex="-1">
           ${
@@ -273,27 +280,39 @@ export class ActivusApp extends LitElement {
               ? html`<activity-editor-page
                   .route=${this.location}
                 ></activity-editor-page>`
-              : isKinds
-                ? html`<activity-kinds-page
+              : pathname === '/activities'
+                ? html`<activity-journal-page
                     .route=${this.location}
-                  ></activity-kinds-page>`
-                : pathname === '/tags'
-                  ? html`<tags-page .route=${this.location}></tags-page>`
-                  : pathname === '/settings'
-                    ? html`<div class="settings">
-                        <h1>Settings</h1>
-                        <p>Manage the configuration used by your journal.</p>
-                        <ul aria-label="Configuration">
-                          <li>
-                            <a href="/activity-kinds"
-                              >Activity kinds and measurements</a
-                            >
-                          </li>
-                          <li><a href="/tags">Tags</a></li>
-                        </ul>
-                      </div>`
-                    : html`<h1>${current?.[0] ?? 'Activus'}</h1>
-                        <p>This space is ready for your training journal.</p>`
+                  ></activity-journal-page>`
+                : /^\/activities\/[^/]+$/.test(pathname)
+                  ? html`<activity-detail-page
+                      .route=${this.location}
+                    ></activity-detail-page>`
+                  : isKinds
+                    ? html`<activity-kinds-page
+                        .route=${this.location}
+                      ></activity-kinds-page>`
+                    : pathname === '/tags'
+                      ? html`<tags-page .route=${this.location}></tags-page>`
+                      : pathname === '/settings'
+                        ? html`<div class="settings">
+                            <h1>Settings</h1>
+                            <p>
+                              Manage the configuration used by your journal.
+                            </p>
+                            <ul aria-label="Configuration">
+                              <li>
+                                <a href="/activity-kinds"
+                                  >Activity kinds and measurements</a
+                                >
+                              </li>
+                              <li><a href="/tags">Tags</a></li>
+                            </ul>
+                          </div>`
+                        : html`<h1>${current?.[0] ?? 'Activus'}</h1>
+                            <p>
+                              This space is ready for your training journal.
+                            </p>`
           }
         </main>
       </div>

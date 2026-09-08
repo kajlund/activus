@@ -12,8 +12,12 @@ import {
   type UpdateActivityVariantRequest,
 } from '@activus/contracts';
 import type { z } from 'zod';
+import { z as schema } from 'zod';
 import {
   ActivitySchema,
+  ActivityListResponseSchema,
+  type ActivityListResponse,
+  type ActivityListQuery,
   type Activity,
   type CreateActivityRequest,
   type UpdateActivityRequest,
@@ -30,6 +34,13 @@ export interface ActivityApi {
     input: UpdateActivityRequest,
     signal?: AbortSignal,
   ): Promise<Activity>;
+}
+export interface JournalApi {
+  listActivities(
+    query: ActivityListQuery,
+    signal?: AbortSignal,
+  ): Promise<ActivityListResponse>;
+  deleteActivity(id: string, signal?: AbortSignal): Promise<void>;
 }
 import {
   TagSchema,
@@ -202,7 +213,7 @@ export interface ConfigurationApi {
 }
 export function createConfigurationApi(
   options: { fetch?: typeof fetch; baseUrl?: string; timeoutMs?: number } = {},
-): ConfigurationApi & MeasurementApi & TagApi & ActivityApi {
+): ConfigurationApi & MeasurementApi & TagApi & ActivityApi & JournalApi {
   const transport =
     options.fetch ?? ((...args: Parameters<typeof fetch>) => fetch(...args));
   async function request<T>(
@@ -234,7 +245,8 @@ export function createConfigurationApi(
       );
       const header = response.headers.get('X-Request-Id');
       if (header && /^[0-9a-f-]{36}$/i.test(header)) requestId = header;
-      const body: unknown = await response.json();
+      const body: unknown =
+        response.status === 204 ? undefined : await response.json();
       if (!response.ok) {
         const parsed = ApiErrorResponseSchema.safeParse(body);
         if (!parsed.success)
@@ -285,6 +297,30 @@ export function createConfigurationApi(
     `/measurement-definitions/${encodeURIComponent(id)}`;
   let units: Promise<{ items: MeasurementUnit[] }> | undefined;
   return {
+    listActivities: (query, signal) => {
+      const params = new URLSearchParams();
+      for (const [key, value] of Object.entries(query))
+        if (value !== undefined)
+          params.set(
+            key,
+            Array.isArray(value) ? value.join(',') : String(value),
+          );
+      return request(
+        `/activities?${params}`,
+        ActivityListResponseSchema,
+        'GET',
+        undefined,
+        signal,
+      );
+    },
+    deleteActivity: (id, signal) =>
+      request(
+        `/activities/${encodeURIComponent(id)}`,
+        schema.undefined(),
+        'DELETE',
+        undefined,
+        signal,
+      ),
     getActivity: (id, signal) =>
       request(
         `/activities/${encodeURIComponent(id)}`,

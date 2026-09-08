@@ -1,6 +1,6 @@
 # Activus
 
-Activus training journal, through phase 3D: PostgreSQL configuration, activity and tag APIs plus a Lit client for configuration management and activity creation/editing. Design and architecture are defined in `.doc/visual-design.md` and `.doc/technical-architecture.md`.
+Activus training journal, through phase 3E: PostgreSQL configuration, activity and tag APIs plus a Lit client for configuration management, activity entry and a filterable activity journal. Design and architecture are defined in `.doc/visual-design.md` and `.doc/technical-architecture.md`.
 
 ## Setup
 
@@ -22,21 +22,21 @@ Open <http://localhost:5173>. Vite proxies `/api` to the API on port 3000 (or `P
 
 ## Commands
 
-| Command                            | Purpose                                                                      |
-| ---------------------------------- | ---------------------------------------------------------------------------- |
-| `pnpm dev`                         | Start all development watchers                                               |
-| `pnpm build`                       | Build contracts, Node API, and static web assets                             |
-| `pnpm typecheck`                   | Check all source, tests, and Vite configuration                              |
-| `pnpm test`                        | Run API and client Vitest tests                                              |
-| `pnpm test:browser`                | Run isolated Chrome configuration journeys in four screen/theme combinations |
-| `pnpm lint`                        | Run ESLint with zero warnings allowed                                        |
-| `pnpm format`                      | Format project files                                                         |
-| `pnpm format:check`                | Check formatting                                                             |
-| `pnpm --filter @activus/api start` | Run the compiled API after building                                          |
-| `pnpm db:generate`                 | Generate SQL and snapshots from the Drizzle schema, offline                  |
-| `pnpm db:check`                    | Check Drizzle migration history consistency, offline                         |
-| `pnpm db:migrate`                  | Apply committed migrations using validated `DATABASE_URL`                    |
-| `pnpm test:db`                     | Run real PostgreSQL tests against guarded `TEST_DATABASE_URL`                |
+| Command                            | Purpose                                                                                         |
+| ---------------------------------- | ----------------------------------------------------------------------------------------------- |
+| `pnpm dev`                         | Start all development watchers                                                                  |
+| `pnpm build`                       | Build contracts, Node API, and static web assets                                                |
+| `pnpm typecheck`                   | Check all source, tests, and Vite configuration                                                 |
+| `pnpm test`                        | Run API and client Vitest tests                                                                 |
+| `pnpm test:browser`                | Run isolated Chrome configuration, entry and journal journeys in four screen/theme combinations |
+| `pnpm lint`                        | Run ESLint with zero warnings allowed                                                           |
+| `pnpm format`                      | Format project files                                                                            |
+| `pnpm format:check`                | Check formatting                                                                                |
+| `pnpm --filter @activus/api start` | Run the compiled API after building                                                             |
+| `pnpm db:generate`                 | Generate SQL and snapshots from the Drizzle schema, offline                                     |
+| `pnpm db:check`                    | Check Drizzle migration history consistency, offline                                            |
+| `pnpm db:migrate`                  | Apply committed migrations using validated `DATABASE_URL`                                       |
+| `pnpm test:db`                     | Run real PostgreSQL tests against guarded `TEST_DATABASE_URL`                                   |
 
 `pnpm test` runs unit, direct Hono API, and client tests without a database or TCP listener. `pnpm test:db` is separate and uses real PostgreSQL, never SQLite or a test double. Client tests use jsdom. Manrope is bundled from a local dependency, with system fallbacks and no font CDN requests.
 
@@ -73,6 +73,8 @@ apps/web/
   src/features/tags/  Tag list, URL filters, lifecycle dialogs and name/colour form
   src/features/activities/
                      Activity editor, tag multi-select and exact value parsing
+  src/features/journal/
+                     Journal, URL filters, detail, formatting and delete confirmation
   src/services/      Typed configuration API client and cached unit metadata
   src/components/    Dialog focus handling across Lit shadow roots
   src/routes/        Client navigation helpers
@@ -86,7 +88,7 @@ drizzle/             Generated SQL migrations and snapshots
 
 Build output lives in each package's `dist/`. Contracts export compiled JavaScript and TypeScript declarations; they contain only environment-independent transport schemas. The default export condition also lets Drizzle Kit load the same ESM module through Node's supported `require(esm)` bridge. API logs use generated request IDs and omit request bodies, query strings, credentials, and arbitrary exception messages. Error responses use stable codes and request IDs; internal details remain private in every environment.
 
-The web shell follows the six approved navigation labels. Activity kinds is implemented, and Settings links to configuration management, including Tags. The other destinations remain placeholders. A mobile navigation disclosure uses native keyboard behavior. Both themes follow `prefers-color-scheme`; motion respects `prefers-reduced-motion`.
+The web shell follows the six approved navigation labels. Activities opens the journal, Activity kinds is implemented, and Settings links to configuration management, including Tags. The other destinations remain placeholders. A mobile navigation disclosure uses native keyboard behavior. Both themes follow `prefers-color-scheme`; motion respects `prefers-reduced-motion`.
 
 ## Configuration client (phases 3A and 3B)
 
@@ -102,7 +104,7 @@ Requests have cancellation, a 15-second timeout, response-schema validation, saf
 
 Complete-list transactional reorder endpoints remain deferred by the backend. The client preserves server order and offers ordinary numeric order edits; there is no drag reordering or sequence of per-row reorder writes.
 
-Browser tests use installed Google Chrome (`channel: chrome`). If Chrome is unavailable, install it or run `pnpm --filter @activus/web exec playwright install chrome`. `pnpm test:browser` builds the web client, then starts and stops an isolated Vite preview server on port 4173. Every API request is intercepted by deterministic test-created state; no development or production database is accessed. Screenshots and failure traces are written under `.artifacts/phase-3a/` for both phases. Tests run at 1440×1000 and 390×844 in light and dark themes. Static production hosting will need an SPA fallback for deep links when deployment is implemented.
+Browser tests use installed Google Chrome (`channel: chrome`). If Chrome is unavailable, install it or run `pnpm --filter @activus/web exec playwright install chrome`. `pnpm test:browser` builds the web client, then starts and stops an isolated Vite preview server on port 4173. Every API request is intercepted by deterministic test-created state; no development or production database is accessed. Screenshots and failure traces are written under `.artifacts/phase-3a/` for all client phases. Tests run at 1440×1000 and 390×844 in light and dark themes. Static production hosting will need an SPA fallback for deep links when deployment is implemented.
 
 ## PostgreSQL setup and migrations
 
@@ -315,7 +317,7 @@ Archive/restore use confirmation dialogs and preserve historical associations. N
 
 ## Activity entry (phase 3D)
 
-Use the global **Record activity** action to open `/activities/new`. Edit an existing record at `/activities/:id/edit`. The six navigation labels remain unchanged, with Activities selected for both routes. Saving temporarily opens `/activities/:id/edit?saved=1`, reloads the saved record and announces **Activity saved**. Cancel returns to the Activities placeholder. Journal browsing and a detail page belong to phase 3E.
+Use the global **Record activity** action to open `/activities/new`. Edit an existing record at `/activities/:id/edit`. The six navigation labels remain unchanged, with Activities selected for both routes. Saving a new activity opens its detail and announces **Activity saved**. Editing returns to the originating filtered journal or detail and refreshes saved data. Cancel returns to that same context; direct entry defaults to the journal. These return flows were completed in phase 3E.
 
 The phase 3D prompt explicitly selects a page-level form, superseding the earlier desktop dialog/panel presentation. Entry uses active kinds, an optional variant with its real configured default, a journal date, optional duration, configuration-driven measurements, active tags and optional plain-text notes. Start timestamp, name, effort and feeling are optional details. No duration or measurements are invented. Native selectors provide keyboard type-ahead; tag checkboxes support search and selected-tag removal.
 
@@ -327,8 +329,20 @@ PATCH sends changed common fields only, preserving immutable and omitted metadat
 
 Tests include the real Hono routes and services backed by isolated repository doubles. Browser requests never reach the development database. Screenshots remain under `.artifacts/phase-3a/activity-entry-*` for compatibility with the existing runner. See `.doc/phase-3d-activity-entry-report.md` for verification and phase 3E handoff details.
 
-## Deferred after phase 3D
+## Activity journal (phase 3E)
+
+Open **Activities** to browse the **Journal** at `/activities`. Entries group by precise local activity date, newest first, with subtle row separators. Summaries show kind/variant, optional start time and duration, the API's configured primary measurement, tags and a notes indicator. Missing values stay absent; zero remains visible. `/activities/:id` shows all stored measurements in server order and complete plain-text notes, including archived references.
+
+Filters offer inclusive custom dates, All time/This week/This month/This year, one kind, a variant within that kind, and multiple tags with explicit **Match any** or **Match all** semantics. Archived references remain available for historical retrieval. Apply commits the draft; Cancel discards it. Filters and removable chips use validated URL parameters, so refresh and back/forward preserve them. Invalid or unsupported parameters are ignored with a notice; applying filters updates the link. No notes-search UI is added.
+
+**Load more** uses the existing offset API in pages of 25, preserving server ordering and deduplicating IDs. Loading and later-page failures retain visible rows and offer an explicit retry. Changed filters reset pagination and superseded responses cannot replace newer results. The displayed count is loaded entries, not an expensive total. Loaded-page depth is not stored in the URL: returning or refreshing reads the first matching page. Concurrent insertions/deletions can shift offset boundaries; no new cursor contract is introduced.
+
+New activity opens the existing editor and then the saved detail, even for an older date outside current filters. Editing from a journal row returns to its filtered list; editing from detail returns to refreshed detail. **Delete activity** confirms the kind and date and accurately explains permanent deletion of the activity, measurements and tag assignments. It uses the existing DELETE endpoint, never retries automatically, and reconciles the journal only after success.
+
+The journal adds no backend, contract, index or migration changes and makes no per-row detail requests. See [the phase 3E report](.doc/phase-3e-activity-journal-report.md) for implementation, verification and pagination limitations.
+
+## Deferred after phase 3E
 
 Bulk reordering remains deferred: phase 2A did not establish a complete-list reorder pattern. Ordinary `sortOrder` edits remain available. Explicit inherited-definition overrides/hiding are deferred until their semantics are designed. Optional development seeds remain deferred; migrations contain no opinionated kinds.
 
-The phase 3E activity journal, goals (including tag-scoped goals), progress and personal-best calculations, tag analytics/grouping, authentication and legacy import remain deferred. Per-tag activity counts, deployment, Docker and chart selection remain deferred. No Git repository or Git configuration is initialized or changed.
+Phase 3F and later reporting work, goals (including tag-scoped goals), progress and personal-best calculations, tag analytics/grouping, authentication and legacy import remain deferred. Per-tag activity counts, deployment, Docker and chart selection remain deferred. No Git repository or Git configuration is initialized or changed.
