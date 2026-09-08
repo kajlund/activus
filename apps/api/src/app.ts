@@ -3,6 +3,9 @@ import { HealthResponseSchema } from '@activus/contracts';
 import type { TagRepository } from './modules/tags/model.js';
 import { TagService } from './modules/tags/service.js';
 import { tagRoutes } from './modules/tags/routes.js';
+import type { GoalRepository } from './modules/goals/model.js';
+import { GoalService } from './modules/goals/service.js';
+import { goalRoutes } from './modules/goals/routes.js';
 import type { ActivityRepository } from './modules/activities/model.js';
 import { ActivityService } from './modules/activities/service.js';
 import { activityRoutes } from './modules/activities/routes.js';
@@ -34,6 +37,7 @@ export function createApp(
     measurements?: MeasurementRepository;
     activities?: ActivityRepository;
     tags?: TagRepository;
+    goals?: GoalRepository;
   } = {},
 ) {
   const app = new Hono<{ Variables: { requestId: string } }>();
@@ -80,6 +84,8 @@ export function createApp(
 
   if (dependencies.tags)
     app.route('/api/v1/tags', tagRoutes(new TagService(dependencies.tags)));
+  if (dependencies.goals)
+    app.route('/api/v1/goals', goalRoutes(new GoalService(dependencies.goals)));
 
   if (dependencies.activities)
     app.route(

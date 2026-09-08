@@ -268,6 +268,10 @@ updated_at
 
 Calculate status and progress from activities. Do not store mutable progress totals. Validate that the selected measurement belongs to the goal scope.
 
+### Goal definition semantics (Phase 4A)
+
+Goals are archived rather than deleted. Archive is stored; lifecycle is otherwise derived from inclusive `start_date` and `end_date` as upcoming, active, or ended. A goal has one required activity kind, an optional compatible variant, and optional required tags using **match-all** semantics. Fixed goals carry one target for their full range; recurring goals apply the same target to each ISO calendar week (Monday-start), month, or year, with boundary periods clipped to the inclusive range. Targets are activity count, total duration in seconds, or a precise canonical numeric measurement total. Editing a non-archived goal changes the definition used for all historical progress recalculation; Phase 4A stores no progress or period rows.
+
 ## Database rules
 
 - Generate schema changes through Drizzle migrations committed to version control.

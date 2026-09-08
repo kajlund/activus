@@ -1,0 +1,88 @@
+import {
+  CreateGoalRequestSchema,
+  UpdateGoalRequestSchema,
+  type CreateGoalRequest,
+  type GoalListQuery,
+} from '@activus/contracts';
+import { ApiError } from '../../errors.js';
+import { parseId } from '../../transport.js';
+import { toGoal } from './mapper.js';
+import type { GoalRecord, GoalRepository } from './model.js';
+export class GoalService {
+  constructor(private readonly repository: GoalRepository) {}
+  private require(row: GoalRecord | undefined) {
+    if (!row) throw new ApiError(404, 'GOAL_NOT_FOUND', 'Goal not found');
+    return row;
+  }
+  private parse(input: unknown, update = false): Record<string, unknown> {
+    const parsed = (
+      update ? UpdateGoalRequestSchema : CreateGoalRequestSchema
+    ).safeParse(input);
+    if (!parsed.success)
+      throw new ApiError(400, 'GOAL_INVALID', 'Invalid goal input');
+    return parsed.data;
+  }
+  async list(q: GoalListQuery) {
+    return { items: (await this.repository.list(q)).map(toGoal) };
+  }
+  async get(id: string) {
+    return toGoal(
+      this.require(await this.repository.find(parseId(id, 'GOAL_INVALID'))),
+    );
+  }
+  async create(input: unknown) {
+    const value = this.parse(input) as CreateGoalRequest;
+    await this.repository.validateReferences(value, true);
+    return toGoal(await this.repository.create(value));
+  }
+  async update(id: string, input: unknown) {
+    const current = this.require(
+      await this.repository.find(parseId(id, 'GOAL_INVALID')),
+    );
+    if (current.archivedAt)
+      throw new ApiError(
+        409,
+        'GOAL_ARCHIVED',
+        'Archived goals cannot be updated',
+      );
+    const patch = this.parse(input, true);
+    const complete = {
+      ...current,
+      ...patch,
+      tagIds: Array.isArray(patch.tagIds) ? patch.tagIds : current.tagIds,
+    };
+    const parsed = CreateGoalRequestSchema.safeParse(complete);
+    if (!parsed.success)
+      throw new ApiError(400, 'GOAL_INVALID', 'Invalid goal input');
+    const value = parsed.data;
+    await this.repository.validateReferences(value, true);
+    return toGoal(
+      this.require(await this.repository.update(current.id, value)),
+    );
+  }
+  async archive(id: string) {
+    return toGoal(
+      this.require(
+        await this.repository.setArchived(parseId(id, 'GOAL_INVALID'), true),
+      ),
+    );
+  }
+  async restore(id: string) {
+    const row = this.require(
+      await this.repository.find(parseId(id, 'GOAL_INVALID')),
+    );
+    if (!row.archivedAt) return toGoal(row);
+    try {
+      await this.repository.validateReferences(row as never, true);
+    } catch {
+      throw new ApiError(
+        409,
+        'GOAL_RESTORE_BLOCKED',
+        'Goal cannot be restored because a referenced definition is unavailable',
+      );
+    }
+    return toGoal(
+      this.require(await this.repository.setArchived(row.id, false)),
+    );
+  }
+}

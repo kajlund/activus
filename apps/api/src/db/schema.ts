@@ -381,3 +381,77 @@ export const measurementDefinitions = pgTable(
     ),
   ],
 );
+
+export const goals = pgTable(
+  'goals',
+  {
+    id: uuid('id').defaultRandom().primaryKey(),
+    name: text('name').notNull(),
+    description: text('description'),
+    targetType: text('target_type').notNull(),
+    targetValue: numeric('target_value').notNull(),
+    measurementDefinitionId: uuid('measurement_definition_id').references(
+      () => measurementDefinitions.id,
+      { onDelete: 'restrict' },
+    ),
+    activityKindId: uuid('activity_kind_id')
+      .notNull()
+      .references(() => activityKinds.id, { onDelete: 'restrict' }),
+    activityVariantId: uuid('activity_variant_id'),
+    scheduleMode: text('schedule_mode').notNull(),
+    recurrencePeriod: text('recurrence_period'),
+    startDate: date('start_date', { mode: 'string' }).notNull(),
+    endDate: date('end_date', { mode: 'string' }).notNull(),
+    archivedAt: timestamp('archived_at', { withTimezone: true, mode: 'date' }),
+    createdAt: timestamp('created_at', { withTimezone: true, mode: 'date' })
+      .defaultNow()
+      .notNull(),
+    updatedAt: timestamp('updated_at', { withTimezone: true, mode: 'date' })
+      .defaultNow()
+      .notNull(),
+  },
+  (t) => [
+    foreignKey({
+      name: 'goals_variant_kind_fk',
+      columns: [t.activityVariantId, t.activityKindId],
+      foreignColumns: [activityVariants.id, activityVariants.activityKindId],
+    }).onDelete('restrict'),
+    check(
+      'goals_name_valid',
+      sql`char_length(${t.name}) BETWEEN 1 AND 120 AND ${t.name} = btrim(${t.name}, ${trimCharacters})`,
+    ),
+    check(
+      'goals_description_valid',
+      sql`${t.description} IS NULL OR (char_length(${t.description}) BETWEEN 1 AND 10000 AND ${t.description} = btrim(${t.description}, ${trimCharacters}))`,
+    ),
+    check(
+      'goals_target_valid',
+      sql`${t.targetType} IN ('activity_count','total_duration','measurement_total') AND ${t.targetValue} > 0 AND scale(${t.targetValue}) <= 6 AND ((${t.targetType} IN ('activity_count','total_duration')) = (${t.measurementDefinitionId} IS NULL))`,
+    ),
+    check(
+      'goals_schedule_valid',
+      sql`${t.endDate} >= ${t.startDate} AND ((${t.scheduleMode} = 'fixed' AND ${t.recurrencePeriod} IS NULL) OR (${t.scheduleMode} = 'recurring' AND ${t.recurrencePeriod} IN ('week','month','year')))`,
+    ),
+    index('goals_active_dates_idx')
+      .on(t.startDate, t.endDate)
+      .where(sql`${t.archivedAt} IS NULL`),
+    index('goals_kind_idx').on(t.activityKindId),
+    index('goals_variant_idx').on(t.activityVariantId),
+    index('goals_measurement_idx').on(t.measurementDefinitionId),
+  ],
+);
+export const goalTags = pgTable(
+  'goal_tags',
+  {
+    goalId: uuid('goal_id')
+      .notNull()
+      .references(() => goals.id, { onDelete: 'cascade' }),
+    tagId: uuid('tag_id')
+      .notNull()
+      .references(() => tags.id, { onDelete: 'restrict' }),
+  },
+  (t) => [
+    primaryKey({ columns: [t.goalId, t.tagId] }),
+    index('goal_tags_tag_goal_idx').on(t.tagId, t.goalId),
+  ],
+);
