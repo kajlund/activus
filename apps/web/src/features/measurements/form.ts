@@ -75,7 +75,7 @@ export class MeasurementForm extends LitElement {
         padding: var(--space-2);
         color: var(--color-text);
         background: var(--color-surface);
-        border: 1px solid var(--color-border);
+        border: 1px solid var(--color-control-border);
         border-radius: var(--radius-md);
       }
       select:focus-visible {

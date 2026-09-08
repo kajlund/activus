@@ -32,6 +32,14 @@ export class KindForm extends LitElement {
   private sortValue = '0';
   private search = '';
   private errors: Record<string, string> = {};
+  get dirty() {
+    return (
+      this.nameValue !== (this.kind?.name ?? '') ||
+      this.iconValue !== (this.kind?.iconName ?? 'activity') ||
+      this.colorValue !== (this.kind?.color ?? '#67318F') ||
+      this.sortValue !== String(this.kind?.sortOrder ?? 0)
+    );
+  }
   static override styles = [
     managementStyles,
     css`
@@ -62,7 +70,7 @@ export class KindForm extends LitElement {
         gap: var(--space-2);
         min-height: 48px;
         padding: var(--space-2);
-        border: 1px solid var(--color-border);
+        border: 1px solid var(--color-control-border);
         border-radius: var(--radius-md);
         cursor: pointer;
       }

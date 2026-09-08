@@ -18,7 +18,9 @@
     "db:migrate": "pnpm --filter @activus/contracts build && pnpm --filter @activus/api db:migrate",
     "db:check": "pnpm --filter @activus/api db:check",
     "test:db": "pnpm --filter @activus/contracts build && pnpm --filter @activus/api test:db",
-    "test:browser": "pnpm --filter @activus/contracts build && pnpm --filter @activus/web build && pnpm --filter @activus/web test:browser"
+    "test:browser": "pnpm --filter @activus/contracts build && pnpm --filter @activus/web build && pnpm --filter @activus/web test:browser",
+    "test:browser:edge": "pnpm --filter @activus/contracts build && pnpm --filter @activus/web build && pnpm --filter @activus/web exec playwright test --config playwright.edge.config.ts",
+    "audit": "pnpm audit"
   },
   "devDependencies": {
     "@eslint/js": "10.0.1",

@@ -1,7 +1,35 @@
+const approvedNavigations = new WeakSet<Event>();
+export const wasApprovedNavigation = (event: Event) =>
+  approvedNavigations.has(event);
+export function navigationPosition(): number {
+  const state = window.history.state as Record<string, unknown> | null;
+  return typeof state?.['activusPosition'] === 'number'
+    ? state['activusPosition']
+    : 0;
+}
+export function initializeNavigation() {
+  window.history.replaceState(
+    { ...window.history.state, activusPosition: navigationPosition() },
+    '',
+    window.location.href,
+  );
+}
 export function navigate(path: string) {
   if (path === window.location.pathname + window.location.search) return;
-  window.history.pushState(null, '', path);
-  window.dispatchEvent(new PopStateEvent('popstate'));
+  if (
+    !window.dispatchEvent(
+      new Event('before-route-change', { cancelable: true }),
+    )
+  )
+    return;
+  window.history.pushState(
+    { activusPosition: navigationPosition() + 1 },
+    '',
+    path,
+  );
+  const event = new PopStateEvent('popstate', { state: window.history.state });
+  approvedNavigations.add(event);
+  window.dispatchEvent(event);
 }
 export function interceptNavigation(event: MouseEvent) {
   if (

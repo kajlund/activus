@@ -96,7 +96,7 @@ export const managementStyles = css`
     width: 100%;
     min-height: 44px;
     padding: var(--space-3);
-    border: 1px solid var(--color-border);
+    border: 1px solid var(--color-control-border);
     border-radius: var(--radius-md);
     background: var(--color-surface);
     color: var(--color-text);
@@ -138,6 +138,7 @@ export const managementStyles = css`
     overflow-wrap: anywhere;
   }
   .badge {
+    color: var(--color-text);
     font-size: var(--font-size-small);
     padding: var(--space-1) var(--space-2);
     border-radius: var(--radius-sm);
@@ -146,7 +147,7 @@ export const managementStyles = css`
   }
   .default {
     background: var(--color-primary-soft);
-    color: var(--color-primary);
+    color: var(--color-primary-hover);
   }
   .actions {
     display: flex;

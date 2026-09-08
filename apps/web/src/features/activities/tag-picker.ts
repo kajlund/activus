@@ -66,7 +66,7 @@ export class ActivityTagPicker extends LitElement {
         t.name.toLocaleLowerCase().includes(this.query.toLocaleLowerCase()),
     );
     return html`
-      <div class="selected" aria-label="Selected tags">
+      <div class="selected" role="group" aria-label="Selected tags">
         ${this.selected.map((id) => {
           const tag =
             this.tags.find((t) => t.id === id) ??

@@ -1,7 +1,7 @@
 # Activus Visual Design
 
 Status: Approved foundation; component details evolve during implementation  
-Last updated: 2026-09-05
+Last updated: 2026-09-08
 
 ## Purpose
 
@@ -88,7 +88,8 @@ Interface icons should use Lucide with a consistent stroke between 1.75 and 2 pi
 | `--color-surface-subtle` | `#EFF2EB` | Grouped sections and selected rows |
 | `--color-text` | `#1C2723` | Primary text |
 | `--color-text-muted` | `#66716C` | Metadata and secondary labels |
-| `--color-border` | `#D9DED7` | Dividers and input borders |
+| `--color-border` | `#D9DED7` | Subtle content dividers |
+| `--color-control-border` | `#858E88` | Form-control boundaries with at least 3:1 contrast |
 | `--color-primary` | `#67318F` | Primary actions and active navigation |
 | `--color-primary-hover` | `#512372` | Hover and pressed emphasis |
 | `--color-primary-soft` | `#EEE7F4` | Selected states and subtle progress areas |
@@ -106,7 +107,8 @@ The warm background establishes the journal character. Deep purple carries the A
 | `--color-surface-subtle` | `#2B2235` | Grouped and selected regions |
 | `--color-text` | `#F3EFF5` | Primary text |
 | `--color-text-muted` | `#B6ACBC` | Secondary text |
-| `--color-border` | `#44384D` | Dividers and borders |
+| `--color-border` | `#44384D` | Subtle content dividers |
+| `--color-control-border` | `#8C7E98` | Form-control boundaries with at least 3:1 contrast |
 | `--color-primary` | `#B88ADB` | Actions and active navigation |
 | `--color-primary-hover` | `#CBA5E5` | Hover emphasis |
 | `--color-primary-soft` | `#412D51` | Selected states |
@@ -295,7 +297,7 @@ Primary action: `Record activity`.
 
 ## Recording and editing activities
 
-On desktop, activity entry opens in a focused dialog or wide side panel. On mobile, it uses a full-screen form. All entry points open the same workflow.
+Activity entry uses a focused page-level form at `/activities/new` and `/activities/:id/edit`, as explicitly selected in Phase 3D. It reflows on mobile. All entry points open the same workflow.
 
 Default form order:
 
@@ -404,3 +406,9 @@ Factual observations must state the calculation, link to the relevant filtered v
 - Established initial light theme, dark theme, semantic, chart, spacing, shape, elevation, and motion tokens.
 - Selected the sharp pulse shield as the app icon: an activity trace forms the letter A and ends as upward progress.
 
+
+### 2026-09-08 - Phase 3F hardening
+
+- Added a separate control-border token after measuring insufficient non-text contrast when the subtle divider token was used for fields. The approved brand and surface palette is unchanged.
+- Aligned the entry presentation with the explicitly accepted Phase 3D page-level form.
+- Use the existing primary-hover colour for selected navigation and default badges on primary-soft backgrounds, and normal text for archived badges. The previous combinations failed automated text-contrast checks.

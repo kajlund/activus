@@ -122,6 +122,8 @@ export class ClientError extends Error {
   }
 }
 const messages: Record<string, string> = {
+  ORIGIN_NOT_ALLOWED:
+    'This page is not allowed to change data. Open Activus at its configured web address.',
   ACTIVITY_REQUIRED_MEASUREMENT_MISSING:
     'Enter the required measurements marked below.',
   ACTIVITY_MEASUREMENT_VALUE_INVALID:

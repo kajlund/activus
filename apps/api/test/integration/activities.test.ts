@@ -1,4 +1,7 @@
 import { randomUUID } from 'node:crypto';
+import { mkdir, writeFile } from 'node:fs/promises';
+import { drizzle } from 'drizzle-orm/node-postgres';
+import * as schema from '../../src/db/schema.js';
 import { fileURLToPath } from 'node:url';
 import { eq, inArray, sql } from 'drizzle-orm';
 import { migrate } from 'drizzle-orm/node-postgres/migrator';
@@ -114,6 +117,74 @@ describe.skipIf(!safe)('PostgreSQL activities and typed measurements', () => {
   });
   afterAll(async () => {
     if (database) await database.close();
+  });
+  it('keeps journal reads bounded and records query plans for a ten-thousand-activity history', async () => {
+    const variant = await variants.create(kindId, {
+      ...validVariant,
+      name: 'Treadmill',
+    });
+    await database.db
+      .execute(sql`INSERT INTO activities (id, activity_kind_id, activity_variant_id, activity_date)
+      SELECT gen_random_uuid(), ${kindId}::uuid, ${variant.id}::uuid, DATE '2010-01-01' + (n % 6000)
+      FROM generate_series(1, 10000) AS n`);
+    const queries: { query: string; params: unknown[] }[] = [];
+    const observed = drizzle(database.db.$client, {
+      schema,
+      logger: {
+        logQuery(query, params) {
+          if (query.startsWith('select ')) queries.push({ query, params });
+        },
+      },
+    });
+    const measured = createActivityRepository(observed);
+    const plans = [];
+    for (const filter of [
+      { activityKindId: kindId },
+      {
+        activityKindId: kindId,
+        activityVariantId: variant.id,
+        dateFrom: '2026-01-01',
+        dateTo: '2026-12-31',
+      },
+    ]) {
+      queries.length = 0;
+      const start = performance.now();
+      const rows = await measured.list(
+        ActivityListQuerySchema.parse({ ...filter, limit: '25', offset: '0' }),
+      );
+      const elapsedMs = performance.now() - start;
+      expect(rows).toHaveLength(26); // One lookahead row, never the full archive.
+      expect(queries).toHaveLength(3);
+      const first = queries[0]!;
+      const plan = await database.db.$client.query(
+        `EXPLAIN (ANALYZE, BUFFERS, FORMAT JSON) ${first.query}`,
+        first.params,
+      );
+      plans.push({
+        filter: filter.dateFrom ? 'full-year-kind-variant' : 'kind-journal',
+        rows: rows.length,
+        selectCount: queries.length,
+        elapsedMs,
+        plan: plan.rows[0],
+      });
+    }
+    queries.length = 0;
+    const item = await measured.list(
+      ActivityListQuerySchema.parse({ activityKindId: kindId, limit: '1' }),
+    );
+    queries.length = 0;
+    await measured.find(item[0]!.activity.id);
+    expect(queries).toHaveLength(3);
+    const folder = new URL('../../../../.artifacts/phase-3f/', import.meta.url);
+    await mkdir(folder, { recursive: true });
+    await writeFile(
+      new URL('journal-query-plans.json', folder),
+      JSON.stringify(
+        { fixtureActivities: 10000, detailSelectCount: queries.length, plans },
+        null,
+        2,
+      ),
+    );
   });
   it('persists exact decimals, date-only values and independent UTC instants', async () => {
     const d = await definitions.create(kindId, {

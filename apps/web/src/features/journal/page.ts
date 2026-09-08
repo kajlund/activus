@@ -16,8 +16,13 @@ import { navigate } from '../../routes/navigation.js';
 import { trapDialogFocus } from '../../components/dialog-focus.js';
 import { activityIcon } from '../activity-kinds/icons.js';
 import { journalStyles } from './styles.js';
-import { journalDate, startTime, duration, measurementText } from './format.js';
-import { tagsView, referenceText, readError } from './presentation.js';
+import { journalDate, startTime, duration } from './format.js';
+import {
+  tagsView,
+  referenceText,
+  readError,
+  measurementView,
+} from './presentation.js';
 import {
   journalPath,
   parseJournal,
@@ -281,9 +286,6 @@ export class ActivityJournalPage extends LitElement {
     this.renderRoot.querySelector<HTMLElement>('h1')?.focus();
   }
   private row(a: ActivitySummary) {
-    const primary = a.primaryMeasurement
-      ? measurementText(a.primaryMeasurement)
-      : undefined;
     return html`<li class="row">
       <span class="kind-icon">${activityIcon(a.kind.iconName)}</span>
       <article class="identity">
@@ -294,7 +296,7 @@ export class ActivityJournalPage extends LitElement {
           ${referenceText(a)}${a.isPartial ? ' · Partial record' : ''}
         </p>
         <div class="facts">
-          ${a.startedAt ? html`<time datetime=${a.startedAt}>${startTime(a.startedAt)}</time>` : nothing}${a.durationSeconds !== null ? html`<span class="measure">${duration(a.durationSeconds)}</span>` : nothing}${primary && a.primaryMeasurement ? html`<span><span class="muted">${a.primaryMeasurement.name}${a.primaryMeasurement.isArchived ? ' (archived)' : ''}:</span> <span class="measure" aria-label=${primary.label}>${primary.text}</span></span>` : nothing}${a.hasNotes ? html`<span class="muted">Notes recorded</span>` : nothing}
+          ${a.startedAt ? html`<time datetime=${a.startedAt}>${startTime(a.startedAt)}</time>` : nothing}${a.durationSeconds !== null ? html`<span class="measure">${duration(a.durationSeconds)}</span>` : nothing}${a.primaryMeasurement ? html`<span><span class="muted">${a.primaryMeasurement.name}${a.primaryMeasurement.isArchived ? ' (archived)' : ''}:</span> ${measurementView(a.primaryMeasurement)}</span>` : nothing}${a.hasNotes ? html`<span class="muted">Notes recorded</span>` : nothing}
         </div>
         ${tagsView(a.tags)}
       </article>

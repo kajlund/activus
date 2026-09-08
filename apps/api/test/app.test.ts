@@ -8,6 +8,46 @@ const makeApp = () =>
   createApp(parseEnv({ NODE_ENV: 'production' }), pino({ level: 'silent' }));
 
 describe('API foundation', () => {
+  it('rejects cross-origin mutation requests before a handler can change data', async () => {
+    const app = makeApp();
+    let writes = 0;
+    app.post('/api/test-write', (c) => {
+      writes++;
+      return c.json({ ok: true });
+    });
+    for (const origin of ['https://untrusted.example', 'null']) {
+      const response = await app.request('/api/test-write', {
+        method: 'POST',
+        headers: { Origin: origin },
+      });
+      expect(response.status).toBe(403);
+      expect(await response.json()).toMatchObject({
+        error: {
+          code: 'ORIGIN_NOT_ALLOWED',
+          requestId: response.headers.get('X-Request-Id'),
+        },
+      });
+    }
+    expect(writes).toBe(0);
+  });
+  it('permits configured-origin, same-origin and non-browser mutations', async () => {
+    const app = makeApp();
+    app.post('/api/test-write', (c) => c.json({ ok: true }));
+    for (const origin of [
+      undefined,
+      'http://localhost:5173',
+      'http://localhost',
+    ]) {
+      expect(
+        (
+          await app.request('http://localhost/api/test-write', {
+            method: 'POST',
+            ...(origin ? { headers: { Origin: origin } } : {}),
+          })
+        ).status,
+      ).toBe(200);
+    }
+  });
   it('returns the shared health contract and a request ID', async () => {
     const response = await makeApp().request('/health');
     expect(response.status).toBe(200);

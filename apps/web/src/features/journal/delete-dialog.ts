@@ -19,15 +19,25 @@ export class ActivityDeleteDialog extends LitElement {
   api: Pick<JournalApi, 'deleteActivity'> = configurationApi;
   private busy = false;
   private error: unknown;
+  private mutation: AbortController | undefined;
+  private beforeUnload = (event: BeforeUnloadEvent) => {
+    if (this.busy) {
+      event.preventDefault();
+      event.returnValue = '';
+    }
+  };
   private guard = (e: Event) => {
     if (this.busy) e.preventDefault();
   };
   override connectedCallback() {
     super.connectedCallback();
     window.addEventListener('before-route-change', this.guard);
+    window.addEventListener('beforeunload', this.beforeUnload);
   }
   override disconnectedCallback() {
     window.removeEventListener('before-route-change', this.guard);
+    window.removeEventListener('beforeunload', this.beforeUnload);
+    this.mutation?.abort();
     super.disconnectedCallback();
   }
   protected override updated(changed: PropertyValues) {
@@ -48,20 +58,28 @@ export class ActivityDeleteDialog extends LitElement {
     if (this.busy || !this.activity) return;
     this.busy = true;
     this.error = undefined;
+    const id = this.activity.id;
+    const controller = (this.mutation = new AbortController());
     try {
-      await this.api.deleteActivity(this.activity.id);
+      await this.api.deleteActivity(id, controller.signal);
+      if (
+        controller.signal.aborted ||
+        !this.isConnected ||
+        this.activity?.id !== id
+      )
+        return;
       this.busy = false;
       this.dispatchEvent(
         new CustomEvent<string>('activity-deleted', {
-          detail: this.activity.id,
+          detail: id,
           bubbles: true,
           composed: true,
         }),
       );
     } catch (error) {
-      this.error = error;
+      if (!controller.signal.aborted && this.isConnected) this.error = error;
     } finally {
-      this.busy = false;
+      if (this.isConnected) this.busy = false;
     }
   }
   override render() {

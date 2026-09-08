@@ -291,13 +291,19 @@ export class TagsPage extends LitElement {
   }
   private beforeRoute = (event: Event) => {
     if (
-      this.renderRoot.querySelector<TagForm>('tag-form')?.dirty &&
-      !window.confirm('Discard your unsaved tag changes and leave this view?')
+      this.busy ||
+      (this.renderRoot.querySelector<TagForm>('tag-form')?.dirty &&
+        !window.confirm(
+          'Discard your unsaved tag changes and leave this view?',
+        ))
     )
       event.preventDefault();
   };
   private beforeUnload = (event: BeforeUnloadEvent) => {
-    if (this.renderRoot.querySelector<TagForm>('tag-form')?.dirty) {
+    if (
+      this.busy ||
+      this.renderRoot.querySelector<TagForm>('tag-form')?.dirty
+    ) {
       event.preventDefault();
       event.returnValue = '';
     }

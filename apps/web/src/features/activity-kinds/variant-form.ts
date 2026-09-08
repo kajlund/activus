@@ -27,6 +27,13 @@ export class VariantForm extends LitElement {
   private sortValue = '0';
   private defaultValue = false;
   private errors: Record<string, string> = {};
+  get dirty() {
+    return (
+      this.nameValue !== (this.variant?.name ?? '') ||
+      this.sortValue !== String(this.variant?.sortOrder ?? 0) ||
+      this.defaultValue !== (this.variant?.isDefault ?? false)
+    );
+  }
   static override styles = [
     managementStyles,
     css`

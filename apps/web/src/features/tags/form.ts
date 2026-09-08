@@ -56,7 +56,7 @@ export class TagForm extends LitElement {
         min-height: 48px;
         align-items: center;
         padding: var(--space-2);
-        border: 1px solid var(--color-border);
+        border: 1px solid var(--color-control-border);
         border-radius: var(--radius-md);
         cursor: pointer;
       }

@@ -1,5 +1,10 @@
 import { LitElement, css, html } from 'lit';
-import { interceptNavigation } from './routes/navigation.js';
+import {
+  interceptNavigation,
+  initializeNavigation,
+  navigationPosition,
+  wasApprovedNavigation,
+} from './routes/navigation.js';
 import './features/activity-kinds/page.js';
 import './features/tags/page.js';
 import './features/activities/page.js';
@@ -19,15 +24,32 @@ const destinations = [
 export class ActivusApp extends LitElement {
   static override properties = { location: { state: true } };
   private location = window.location.pathname + window.location.search;
-  private readonly onLocation = () => {
+  private position = navigationPosition();
+  private restoringHistory = false;
+  private readonly onLocation = (event: Event) => {
+    if (this.restoringHistory) {
+      this.restoringHistory = false;
+      return;
+    }
     if (
+      !wasApprovedNavigation(event) &&
       !window.dispatchEvent(
         new Event('before-route-change', { cancelable: true }),
       )
     ) {
-      window.history.pushState(null, '', this.location);
+      const delta = this.position - navigationPosition();
+      if (delta) {
+        this.restoringHistory = true;
+        window.history.go(delta);
+      } else
+        window.history.replaceState(
+          { ...window.history.state, activusPosition: this.position },
+          '',
+          this.location,
+        );
       return;
     }
+    this.position = navigationPosition();
     const pathChanged =
       new URL(this.location, window.location.origin).pathname !==
       window.location.pathname;
@@ -47,6 +69,7 @@ export class ActivusApp extends LitElement {
 
   override connectedCallback() {
     super.connectedCallback();
+    initializeNavigation();
     this.desktop?.addEventListener('change', this.syncNavigation);
     window.addEventListener('popstate', this.onLocation);
     this.syncNavigation();
@@ -60,6 +83,33 @@ export class ActivusApp extends LitElement {
 
   protected override firstUpdated() {
     this.syncNavigation();
+  }
+  protected override updated() {
+    const path = new URL(this.location, window.location.origin).pathname;
+    const title =
+      path === '/activities'
+        ? 'Journal'
+        : path === '/activities/new'
+          ? 'New activity'
+          : /^\/activities\/[^/]+\/edit$/.test(path)
+            ? 'Edit activity'
+            : /^\/activities\/[^/]+$/.test(path)
+              ? 'Activity details'
+              : /^\/activity-kinds\/[^/]+$/.test(path)
+                ? 'Activity kind details'
+                : path === '/tags'
+                  ? 'Tags'
+                  : (destinations.find(([, url]) => url === path)?.[0] ??
+                    'Page not found');
+    document.title = `${title} · Activus`;
+  }
+  private navigationKey(event: KeyboardEvent) {
+    const drawer = event.currentTarget as HTMLDetailsElement;
+    if (event.key === 'Escape' && drawer.open && !this.desktop?.matches) {
+      event.preventDefault();
+      drawer.open = false;
+      drawer.querySelector('summary')?.focus();
+    }
   }
 
   static override styles = css`
@@ -157,7 +207,7 @@ export class ActivusApp extends LitElement {
       background: var(--color-surface-subtle);
     }
     nav a[aria-current='page'] {
-      color: var(--color-primary);
+      color: var(--color-primary-hover);
       background: var(--color-primary-soft);
       font-weight: 600;
     }
@@ -248,7 +298,8 @@ export class ActivusApp extends LitElement {
   override render() {
     const pathname = new URL(this.location, window.location.origin).pathname;
     const isKinds =
-      pathname === '/activity-kinds' || pathname.startsWith('/activity-kinds/');
+      pathname === '/activity-kinds' ||
+      /^\/activity-kinds\/[^/]+$/.test(pathname);
     const current = destinations.find(([, path]) => path === pathname);
     return html`
       <a class="skip" href="#main" @click=${this.skipToMain}>Skip to content</a>
@@ -259,7 +310,7 @@ export class ActivusApp extends LitElement {
               >Activus</span
             ></a
           >
-          <details open>
+          <details open @keydown=${this.navigationKey}>
             <summary>Navigation</summary>
             <nav aria-label="Primary">
               <ul>
@@ -309,10 +360,17 @@ export class ActivusApp extends LitElement {
                               <li><a href="/tags">Tags</a></li>
                             </ul>
                           </div>`
-                        : html`<h1>${current?.[0] ?? 'Activus'}</h1>
-                            <p>
-                              This space is ready for your training journal.
-                            </p>`
+                        : current
+                          ? html`<h1>${current[0]}</h1>
+                              <p>
+                                ${pathname === '/' ? 'Your recorded activities are available in the journal.' : 'This section is planned for a later phase.'}
+                              </p>
+                              <a href="/activities">Open journal</a>`
+                          : html`<h1>Page not found</h1>
+                              <p>
+                                This address does not match an Activus page.
+                              </p>
+                              <a href="/activities">Return to journal</a>`
           }
         </main>
       </div>

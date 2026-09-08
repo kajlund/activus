@@ -5,6 +5,7 @@
   --color-text: #1c2723;
   --color-text-muted: #66716c;
   --color-border: #d9ded7;
+  --color-control-border: #858e88;
   --color-primary: #67318f;
   --color-primary-hover: #512372;
   --color-primary-soft: #eee7f4;
@@ -70,6 +71,7 @@
     --color-text: #f3eff5;
     --color-text-muted: #b6acbc;
     --color-border: #44384d;
+    --color-control-border: #8c7e98;
     --color-primary: #b88adb;
     --color-primary-hover: #cba5e5;
     --color-primary-soft: #412d51;

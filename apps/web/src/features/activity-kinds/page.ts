@@ -19,8 +19,8 @@ import {
 import { navigate } from '../../routes/navigation.js';
 import { managementStyles } from './styles.js';
 import { activityIcon } from './icons.js';
-import './kind-form.js';
-import './variant-form.js';
+import { KindForm } from './kind-form.js';
+import { VariantForm } from './variant-form.js';
 type Editor =
   | { type: 'kind'; value?: ActivityKind }
   | { type: 'variant'; value?: ActivityVariant }
@@ -45,6 +45,7 @@ export class ActivityKindsPage extends LitElement {
     busy: { state: true },
     mutationError: { state: true },
     status: { state: true },
+    discardWarning: { state: true },
   };
   route = window.location.pathname + window.location.search;
   api: ConfigurationApi = configurationApi;
@@ -59,6 +60,45 @@ export class ActivityKindsPage extends LitElement {
   private busy = false;
   private mutationError: unknown;
   private status = '';
+  private discardWarning = false;
+  private get dirty() {
+    return (
+      this.renderRoot.querySelector<KindForm | VariantForm>(
+        'kind-form,variant-form',
+      )?.dirty ?? false
+    );
+  }
+  private beforeRoute = (event: Event) => {
+    if (
+      this.busy ||
+      (this.dirty &&
+        !window.confirm(
+          'Discard your unsaved configuration changes and leave this view?',
+        ))
+    )
+      event.preventDefault();
+  };
+  private beforeUnload = (event: BeforeUnloadEvent) => {
+    if (this.busy || this.dirty) {
+      event.preventDefault();
+      event.returnValue = '';
+    }
+  };
+  override connectedCallback() {
+    super.connectedCallback();
+    window.addEventListener('before-route-change', this.beforeRoute);
+    window.addEventListener('beforeunload', this.beforeUnload);
+  }
+  private requestDismiss() {
+    if (this.busy) return;
+    if (!this.dirty) this.closeEditor();
+    else {
+      this.discardWarning = true;
+      void this.updateComplete.then(() =>
+        this.renderRoot.querySelector<HTMLElement>('#keep-editing')?.focus(),
+      );
+    }
+  }
   private loadController: AbortController | undefined;
   private mutationController: AbortController | undefined;
   private generation = 0;
@@ -344,6 +384,8 @@ export class ActivityKindsPage extends LitElement {
     }
   }
   override disconnectedCallback() {
+    window.removeEventListener('before-route-change', this.beforeRoute);
+    window.removeEventListener('beforeunload', this.beforeUnload);
     this.loadController?.abort();
     this.mutationController?.abort();
     this.generation++;
@@ -425,6 +467,7 @@ export class ActivityKindsPage extends LitElement {
     } else dialog?.querySelector<HTMLButtonElement>('button')?.focus();
   }
   private closeEditor(restore = true) {
+    this.discardWarning = false;
     this.renderRoot.querySelector('dialog')?.close();
     this.editor = undefined;
     this.mutationError = undefined;
@@ -738,11 +781,35 @@ export class ActivityKindsPage extends LitElement {
       aria-labelledby="editor-title"
       @cancel=${(e: Event) => {
         e.preventDefault();
-        if (!this.busy) this.closeEditor();
+        this.requestDismiss();
       }}
-      @cancel-editor=${() => this.closeEditor()}
+      @cancel-editor=${() => this.requestDismiss()}
     >
       <h2 id="editor-title">${title}</h2>
+      ${
+        this.discardWarning
+          ? html`<div class="notice" role="alert">
+              <p>Discard your unsaved configuration changes?</p>
+              <div class="actions">
+                <button
+                  id="keep-editing"
+                  @click=${async () => {
+                    this.discardWarning = false;
+                    await this.updateComplete;
+                    this.renderRoot
+                      .querySelector<LitElement>('kind-form,variant-form')
+                      ?.shadowRoot?.querySelector<HTMLInputElement>('#name')
+                      ?.focus();
+                  }}
+                >
+                  Keep editing</button
+                ><button @click=${() => this.closeEditor()}>
+                  Discard changes
+                </button>
+              </div>
+            </div>`
+          : nothing
+      }
       ${
         editor.type === 'kind'
           ? html`<kind-form

@@ -225,11 +225,6 @@ export class ActivityEditorPage extends LitElement {
       this.initialValues = { ...this.values };
       this.loading = false;
       if (this.draft.activityKindId) await this.resolve(true);
-      if (
-        generation === this.generation &&
-        new URL(this.route, location.origin).searchParams.get('saved') === '1'
-      )
-        this.status = 'Activity saved.';
     } catch (error) {
       if (generation === this.generation && !controller.signal.aborted)
         this.error = error;
@@ -516,6 +511,12 @@ export class ActivityEditorPage extends LitElement {
           : this.original;
       } else
         saved = await this.api.createActivity(parsed.data, controller.signal);
+      if (
+        controller.signal.aborted ||
+        !this.isConnected ||
+        this.mutation !== controller
+      )
+        return;
       this.initialDraft = structuredClone(this.draft);
       this.initialValues = { ...this.values };
       this.busy = false;
@@ -541,6 +542,12 @@ export class ActivityEditorPage extends LitElement {
       if (target === this.route) await this.load();
       else navigate(target);
     } catch (error) {
+      if (
+        controller.signal.aborted ||
+        !this.isConnected ||
+        this.mutation !== controller
+      )
+        return;
       this.saveError = error;
       this.status = '';
       if (error instanceof ClientError) {
@@ -563,7 +570,7 @@ export class ActivityEditorPage extends LitElement {
       this.errors = errors;
       void this.focusError();
     } finally {
-      this.busy = false;
+      if (this.isConnected && this.mutation === controller) this.busy = false;
     }
   }
   private field(key: keyof Draft, label: string, type = 'text', help = '') {
@@ -892,7 +899,7 @@ export class ActivityEditorPage extends LitElement {
         min-width: 0;
         min-height: 44px;
         padding: var(--space-3);
-        border: 1px solid var(--color-border);
+        border: 1px solid var(--color-control-border);
         border-radius: var(--radius-md);
         background: var(--color-surface);
         color: var(--color-text);

@@ -1,7 +1,7 @@
 # Activus Technical Architecture
 
 Status: Initial architecture for the clean rebuild  
-Last updated: 2026-09-05
+Last updated: 2026-09-08
 
 ## Goals
 
@@ -128,7 +128,7 @@ Initial resource groups:
 /api/v1/progress
 /api/v1/tags
 /api/v1/settings
-/api/health
+/health
 ```
 
 Do not force every analytical query into generic CRUD. Purpose-specific progress endpoints are appropriate when they express stable domain questions.
@@ -310,7 +310,7 @@ Recommended top-level routes:
 /settings
 ```
 
-Store Progress filters in URL query parameters. Activity-entry state belongs in the dialog or panel unless deep-linking the creation form proves useful.
+Store Progress filters in URL query parameters. Phase 3D established page-level activity entry at `/activities/new` and `/activities/:id/edit`. Phase 3E added the journal and detail routes; validated return destinations preserve journal filters.
 
 ### State
 

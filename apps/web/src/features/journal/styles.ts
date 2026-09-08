@@ -3,6 +3,15 @@ import { managementStyles } from '../activity-kinds/styles.js';
 export const journalStyles = [
   managementStyles,
   css`
+    .sr-only {
+      position: absolute;
+      width: 1px;
+      height: 1px;
+      padding: 0;
+      overflow: hidden;
+      clip-path: inset(50%);
+      white-space: nowrap;
+    }
     :host {
       max-width: 1000px;
       margin: 0 auto;

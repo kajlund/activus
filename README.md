@@ -341,8 +341,18 @@ New activity opens the existing editor and then the saved detail, even for an ol
 
 The journal adds no backend, contract, index or migration changes and makes no per-row detail requests. See [the phase 3E report](.doc/phase-3e-activity-journal-report.md) for implementation, verification and pagination limitations.
 
-## Deferred after phase 3E
+## Core journal hardening (phase 3F)
+
+Navigation protects dirty configuration and activity forms, including browser Back/Forward. Pending mutations cannot trigger navigation after their owning component disconnects. Unknown routes show a recoverable not-found page, and document titles identify the current route.
+
+The API rejects mutating requests with an Origin other than its own origin or configured `WEB_ORIGIN`. Requests without Origin remain supported for CLI clients; this is not authentication. Production web builds do not load the API's root environment file, so a development `NODE_ENV` cannot select Lit's development bundle. Development still reads the root API port for its proxy.
+
+Run `pnpm format:check`, `pnpm lint`, `pnpm typecheck`, `pnpm test`, `pnpm test:db`, `pnpm db:check`, `pnpm build`, `pnpm test:browser`, and `pnpm audit`. With Microsoft Edge installed, `pnpm test:browser:edge` runs the additional hardening journeys in both themes. Run browser commands sequentially because they use the same preview port. `pnpm audit --prod` checks production dependencies separately.
+
+See [the phase 3F report](.doc/phase-3f-core-journal-hardening-report.md) for test results, query measurements, accessibility evidence, and remaining verification limits.
+
+## Deferred after phase 3F
 
 Bulk reordering remains deferred: phase 2A did not establish a complete-list reorder pattern. Ordinary `sortOrder` edits remain available. Explicit inherited-definition overrides/hiding are deferred until their semantics are designed. Optional development seeds remain deferred; migrations contain no opinionated kinds.
 
-Phase 3F and later reporting work, goals (including tag-scoped goals), progress and personal-best calculations, tag analytics/grouping, authentication and legacy import remain deferred. Per-tag activity counts, deployment, Docker and chart selection remain deferred. No Git repository or Git configuration is initialized or changed.
+Reporting work, goals (including tag-scoped goals), progress and personal-best calculations, tag analytics/grouping, authentication and legacy import remain deferred. Per-tag activity counts, deployment, Docker and chart selection remain deferred. No Git repository or Git configuration is initialized or changed.

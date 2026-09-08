@@ -628,3 +628,23 @@ it('removes an archived tag and does not offer it as a new selection', async () 
   expect((await fixture.api.getActivity(a.id)).tags).toEqual([]);
   expect(picker.tags.some((t) => t.id === fixture.tag.id)).toBe(false);
 });
+
+it('ignores a completed save after the editor has disconnected', async () => {
+  const stored = await existing();
+  const el = await page();
+  await selectKind(el);
+  await input(el, 'm-' + fixture.distance.id, '1');
+  let complete!: (value: typeof stored) => void;
+  vi.spyOn(fixture.api, 'createActivity').mockImplementationOnce(
+    () =>
+      new Promise((resolve) => {
+        complete = resolve;
+      }),
+  );
+  await save(el);
+  el.remove();
+  const push = vi.spyOn(history, 'pushState');
+  complete(stored);
+  await settle(el);
+  expect(push).not.toHaveBeenCalled();
+});

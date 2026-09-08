@@ -57,6 +57,22 @@ export function createApp(
   });
 
   app.use('/api/*', cors({ origin: config.WEB_ORIGIN }));
+  // CORS controls response access, but does not prevent a cross-origin form POST.
+  app.use('/api/*', async (c, next) => {
+    const origin = c.req.header('Origin');
+    if (
+      !['GET', 'HEAD', 'OPTIONS'].includes(c.req.method) &&
+      origin &&
+      origin !== config.WEB_ORIGIN &&
+      origin !== new URL(c.req.url).origin
+    )
+      throw new ApiError(
+        403,
+        'ORIGIN_NOT_ALLOWED',
+        'This origin is not allowed to change data',
+      );
+    await next();
+  });
 
   app.get('/health', (c) =>
     c.json(HealthResponseSchema.parse({ status: 'ok' })),

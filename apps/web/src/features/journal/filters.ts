@@ -338,7 +338,7 @@ export class JournalFilters extends LitElement {
         min-width: 0;
         min-height: 44px;
         padding: var(--space-3);
-        border: 1px solid var(--color-border);
+        border: 1px solid var(--color-control-border);
         border-radius: var(--radius-md);
         background: var(--color-surface);
         color: var(--color-text);

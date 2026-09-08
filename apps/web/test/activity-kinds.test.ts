@@ -220,3 +220,36 @@ it('shows useful invalid and missing detail states', async () => {
   await settle(view);
   expect(view.shadowRoot!.textContent).toContain('Activity kind not found');
 });
+
+it('protects dirty kind and variant forms but allows clean dismissal', async () => {
+  const view = await page();
+  button(view.shadowRoot!, 'Add activity kind').click();
+  await settle(view);
+  const form = view.shadowRoot!.querySelector<KindForm>('kind-form')!;
+  await settle(form);
+  expect(form.dirty).toBe(false);
+  input(form, '#name', 'Unfinished kind');
+  await settle(form);
+  expect(form.dirty).toBe(true);
+  vi.spyOn(window, 'confirm').mockReturnValue(false);
+  expect(
+    window.dispatchEvent(
+      new Event('before-route-change', { cancelable: true }),
+    ),
+  ).toBe(false);
+  button(form.shadowRoot!, 'Cancel').click();
+  await settle(view);
+  expect(view.shadowRoot!.textContent).toContain(
+    'Discard your unsaved configuration',
+  );
+  button(view.shadowRoot!, 'Discard changes').click();
+  await settle(view);
+  expect(view.shadowRoot!.querySelector('dialog')).toBeNull();
+  const variant = new VariantForm();
+  document.body.append(variant);
+  await settle(variant);
+  expect(variant.dirty).toBe(false);
+  input(variant, '#name', 'Trail');
+  await settle(variant);
+  expect(variant.dirty).toBe(true);
+});

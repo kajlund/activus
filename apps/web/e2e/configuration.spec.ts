@@ -173,6 +173,7 @@ test('empty, network error and conflict states preserve context', async ({
     'Walking',
   );
   await page.keyboard.press('Escape');
+  await dialog.getByRole('button', { name: 'Discard changes' }).click();
   await page.route('**/api/v1/activity-kinds?*', async (route) =>
     route.abort(),
   );

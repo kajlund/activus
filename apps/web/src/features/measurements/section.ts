@@ -243,6 +243,7 @@ export class MeasurementSection extends LitElement {
   }
   private beforeUnload = (event: BeforeUnloadEvent) => {
     if (
+      this.busy ||
       this.renderRoot.querySelector<MeasurementForm>('measurement-form')?.dirty
     ) {
       event.preventDefault();
@@ -251,11 +252,12 @@ export class MeasurementSection extends LitElement {
   };
   private beforeRouteChange = (event: Event) => {
     if (
-      this.renderRoot.querySelector<MeasurementForm>('measurement-form')
+      this.busy ||
+      (this.renderRoot.querySelector<MeasurementForm>('measurement-form')
         ?.dirty &&
-      !window.confirm(
-        'Discard your unsaved measurement changes and leave this view?',
-      )
+        !window.confirm(
+          'Discard your unsaved measurement changes and leave this view?',
+        ))
     )
       event.preventDefault();
   };
