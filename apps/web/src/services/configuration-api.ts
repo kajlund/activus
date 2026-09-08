@@ -11,6 +11,12 @@ import {
   type UpdateActivityKindRequest,
   type UpdateActivityVariantRequest,
 } from '@activus/contracts';
+import {
+  GoalSchema,
+  type Goal,
+  type CreateGoalRequest,
+  type UpdateGoalRequest,
+} from '@activus/contracts';
 import type { z } from 'zod';
 import { z as schema } from 'zod';
 import {
@@ -34,6 +40,15 @@ export interface ActivityApi {
     input: UpdateActivityRequest,
     signal?: AbortSignal,
   ): Promise<Activity>;
+}
+export interface GoalApi {
+  getGoal(id: string, signal?: AbortSignal): Promise<Goal>;
+  createGoal(input: CreateGoalRequest, signal?: AbortSignal): Promise<Goal>;
+  updateGoal(
+    id: string,
+    input: UpdateGoalRequest,
+    signal?: AbortSignal,
+  ): Promise<Goal>;
 }
 export interface JournalApi {
   listActivities(
@@ -156,6 +171,12 @@ const messages: Record<string, string> = {
     'Restore the activity kind before adding or restoring variants or selecting a default.',
   ACTIVITY_VARIANT_ARCHIVED:
     'Restore the variant before making it the default.',
+  MEASUREMENT_DEFINITION_ARCHIVED:
+    'The target measurement is archived. Keep the stored measurement or choose an active one before saving.',
+  GOAL_VARIANT_MISMATCH:
+    'The selected variant is no longer valid for this activity kind. Your changes have been kept.',
+  GOAL_MEASUREMENT_INCOMPATIBLE:
+    'The target measurement is no longer valid for this activity kind and variant. Your changes have been kept.',
   CONFIGURATION_WRITE_CONFLICT:
     'Configuration changed while saving. Review the current state before trying again.',
   ACTIVITY_KIND_INVALID: 'Check the activity-kind fields and try again.',
@@ -215,7 +236,12 @@ export interface ConfigurationApi {
 }
 export function createConfigurationApi(
   options: { fetch?: typeof fetch; baseUrl?: string; timeoutMs?: number } = {},
-): ConfigurationApi & MeasurementApi & TagApi & ActivityApi & JournalApi {
+): ConfigurationApi &
+  MeasurementApi &
+  TagApi &
+  ActivityApi &
+  JournalApi &
+  GoalApi {
   const transport =
     options.fetch ?? ((...args: Parameters<typeof fetch>) => fetch(...args));
   async function request<T>(
@@ -299,6 +325,24 @@ export function createConfigurationApi(
     `/measurement-definitions/${encodeURIComponent(id)}`;
   let units: Promise<{ items: MeasurementUnit[] }> | undefined;
   return {
+    getGoal: (id, signal) =>
+      request(
+        `/goals/${encodeURIComponent(id)}`,
+        GoalSchema,
+        'GET',
+        undefined,
+        signal,
+      ),
+    createGoal: (input, signal) =>
+      request('/goals', GoalSchema, 'POST', input, signal),
+    updateGoal: (id, input, signal) =>
+      request(
+        `/goals/${encodeURIComponent(id)}`,
+        GoalSchema,
+        'PATCH',
+        input,
+        signal,
+      ),
     listActivities: (query, signal) => {
       const params = new URLSearchParams();
       for (const [key, value] of Object.entries(query))

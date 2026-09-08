@@ -3,6 +3,7 @@ import {
   interceptNavigation,
   initializeNavigation,
   navigationPosition,
+  requestRouteChange,
   wasApprovedNavigation,
 } from './routes/navigation.js';
 import './features/activity-kinds/page.js';
@@ -10,6 +11,7 @@ import './features/tags/page.js';
 import './features/activities/page.js';
 import './features/journal/page.js';
 import './features/journal/detail.js';
+import './features/goals/create-page.js';
 import { withReturn } from './features/journal/state.js';
 
 const destinations = [
@@ -26,29 +28,8 @@ export class ActivusApp extends LitElement {
   private location = window.location.pathname + window.location.search;
   private position = navigationPosition();
   private restoringHistory = false;
-  private readonly onLocation = (event: Event) => {
-    if (this.restoringHistory) {
-      this.restoringHistory = false;
-      return;
-    }
-    if (
-      !wasApprovedNavigation(event) &&
-      !window.dispatchEvent(
-        new Event('before-route-change', { cancelable: true }),
-      )
-    ) {
-      const delta = this.position - navigationPosition();
-      if (delta) {
-        this.restoringHistory = true;
-        window.history.go(delta);
-      } else
-        window.history.replaceState(
-          { ...window.history.state, activusPosition: this.position },
-          '',
-          this.location,
-        );
-      return;
-    }
+  private approvedHistory = false;
+  private applyLocation() {
     this.position = navigationPosition();
     const pathChanged =
       new URL(this.location, window.location.origin).pathname !==
@@ -60,6 +41,62 @@ export class ActivusApp extends LitElement {
       void this.updateComplete.then(() =>
         this.renderRoot.querySelector<HTMLElement>('main')?.focus(),
       );
+  }
+  private readonly onLocation = (event: Event) => {
+    if (this.approvedHistory) {
+      this.approvedHistory = false;
+      this.applyLocation();
+      return;
+    }
+    if (this.restoringHistory) {
+      this.restoringHistory = false;
+      return;
+    }
+    if (!wasApprovedNavigation(event)) {
+      const targetPosition = navigationPosition();
+      const targetUrl = window.location.pathname + window.location.search;
+      const targetState = window.history.state;
+      const delta = this.position - navigationPosition();
+      let restored = true;
+      let resumeRequested = false;
+      const resume = () => {
+        if (!restored) {
+          resumeRequested = true;
+          return;
+        }
+        const resumeDelta = targetPosition - navigationPosition();
+        if (resumeDelta) {
+          this.approvedHistory = true;
+          window.history.go(resumeDelta);
+        } else {
+          window.history.replaceState(targetState, '', targetUrl);
+          this.applyLocation();
+        }
+      };
+      if (!requestRouteChange({ resume })) {
+        restored = false;
+        if (delta) {
+          this.restoringHistory = true;
+          window.history.go(delta);
+          const restoredLocation = () => {
+            window.removeEventListener('popstate', restoredLocation);
+            restored = true;
+            if (resumeRequested) resume();
+          };
+          window.addEventListener('popstate', restoredLocation);
+        } else {
+          restored = true;
+          window.history.replaceState(
+            { ...window.history.state, activusPosition: this.position },
+            '',
+            this.location,
+          );
+        }
+        return;
+      }
+      return;
+    }
+    this.applyLocation();
   };
   private readonly desktop = window.matchMedia?.('(min-width: 769px)');
   private readonly syncNavigation = () => {
@@ -89,18 +126,22 @@ export class ActivusApp extends LitElement {
     const title =
       path === '/activities'
         ? 'Journal'
-        : path === '/activities/new'
-          ? 'New activity'
-          : /^\/activities\/[^/]+\/edit$/.test(path)
-            ? 'Edit activity'
-            : /^\/activities\/[^/]+$/.test(path)
-              ? 'Activity details'
-              : /^\/activity-kinds\/[^/]+$/.test(path)
-                ? 'Activity kind details'
-                : path === '/tags'
-                  ? 'Tags'
-                  : (destinations.find(([, url]) => url === path)?.[0] ??
-                    'Page not found');
+        : path === '/goals/new'
+          ? 'New goal'
+          : /^\/goals\/[^/]+\/edit$/.test(path)
+            ? 'Edit goal'
+            : path === '/activities/new'
+              ? 'New activity'
+              : /^\/activities\/[^/]+\/edit$/.test(path)
+                ? 'Edit activity'
+                : /^\/activities\/[^/]+$/.test(path)
+                  ? 'Activity details'
+                  : /^\/activity-kinds\/[^/]+$/.test(path)
+                    ? 'Activity kind details'
+                    : path === '/tags'
+                      ? 'Tags'
+                      : (destinations.find(([, url]) => url === path)?.[0] ??
+                        'Page not found');
     document.title = `${title} · Activus`;
   }
   private navigationKey(event: KeyboardEvent) {
@@ -326,51 +367,53 @@ export class ActivusApp extends LitElement {
         </aside>
         <main id="main" tabindex="-1">
           ${
-            pathname === '/activities/new' ||
-            /^\/activities\/[^/]+\/edit$/.test(pathname)
-              ? html`<activity-editor-page
-                  .route=${this.location}
-                ></activity-editor-page>`
-              : pathname === '/activities'
-                ? html`<activity-journal-page
+            pathname === '/goals/new' || /^\/goals\/[^/]+\/edit$/.test(pathname)
+              ? html`<goal-form-page .route=${this.location}></goal-form-page>`
+              : pathname === '/activities/new' ||
+                  /^\/activities\/[^/]+\/edit$/.test(pathname)
+                ? html`<activity-editor-page
                     .route=${this.location}
-                  ></activity-journal-page>`
-                : /^\/activities\/[^/]+$/.test(pathname)
-                  ? html`<activity-detail-page
+                  ></activity-editor-page>`
+                : pathname === '/activities'
+                  ? html`<activity-journal-page
                       .route=${this.location}
-                    ></activity-detail-page>`
-                  : isKinds
-                    ? html`<activity-kinds-page
+                    ></activity-journal-page>`
+                  : /^\/activities\/[^/]+$/.test(pathname)
+                    ? html`<activity-detail-page
                         .route=${this.location}
-                      ></activity-kinds-page>`
-                    : pathname === '/tags'
-                      ? html`<tags-page .route=${this.location}></tags-page>`
-                      : pathname === '/settings'
-                        ? html`<div class="settings">
-                            <h1>Settings</h1>
-                            <p>
-                              Manage the configuration used by your journal.
-                            </p>
-                            <ul aria-label="Configuration">
-                              <li>
-                                <a href="/activity-kinds"
-                                  >Activity kinds and measurements</a
-                                >
-                              </li>
-                              <li><a href="/tags">Tags</a></li>
-                            </ul>
-                          </div>`
-                        : current
-                          ? html`<h1>${current[0]}</h1>
+                      ></activity-detail-page>`
+                    : isKinds
+                      ? html`<activity-kinds-page
+                          .route=${this.location}
+                        ></activity-kinds-page>`
+                      : pathname === '/tags'
+                        ? html`<tags-page .route=${this.location}></tags-page>`
+                        : pathname === '/settings'
+                          ? html`<div class="settings">
+                              <h1>Settings</h1>
                               <p>
-                                ${pathname === '/' ? 'Your recorded activities are available in the journal.' : 'This section is planned for a later phase.'}
+                                Manage the configuration used by your journal.
                               </p>
-                              <a href="/activities">Open journal</a>`
-                          : html`<h1>Page not found</h1>
-                              <p>
-                                This address does not match an Activus page.
-                              </p>
-                              <a href="/activities">Return to journal</a>`
+                              <ul aria-label="Configuration">
+                                <li>
+                                  <a href="/activity-kinds"
+                                    >Activity kinds and measurements</a
+                                  >
+                                </li>
+                                <li><a href="/tags">Tags</a></li>
+                              </ul>
+                            </div>`
+                          : current
+                            ? html`<h1>${current[0]}</h1>
+                                <p>
+                                  ${pathname === '/' ? 'Your recorded activities are available in the journal.' : 'This section is planned for a later phase.'}
+                                </p>
+                                <a href="/activities">Open journal</a>`
+                            : html`<h1>Page not found</h1>
+                                <p>
+                                  This address does not match an Activus page.
+                                </p>
+                                <a href="/activities">Return to journal</a>`
           }
         </main>
       </div>

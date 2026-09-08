@@ -66,6 +66,13 @@ export function createGoalRepository(db: Database): GoalRepository {
           measurementDefinitionId: string | null;
         },
     active: boolean,
+    retained?: Pick<
+      GoalRecord,
+      | 'activityKindId'
+      | 'activityVariantId'
+      | 'tagIds'
+      | 'measurementDefinitionId'
+    >,
   ) {
     const kind = (
       await db
@@ -79,7 +86,11 @@ export function createGoalRepository(db: Database): GoalRepository {
         'ACTIVITY_KIND_NOT_FOUND',
         'Activity kind not found',
       );
-    if (active && kind.archivedAt)
+    if (
+      active &&
+      kind.archivedAt &&
+      retained?.activityKindId !== input.activityKindId
+    )
       throw new ApiError(
         409,
         'ACTIVITY_KIND_ARCHIVED',
@@ -98,7 +109,11 @@ export function createGoalRepository(db: Database): GoalRepository {
           'GOAL_VARIANT_MISMATCH',
           'Variant does not belong to this kind',
         );
-      if (active && variant.archivedAt)
+      if (
+        active &&
+        variant.archivedAt &&
+        retained?.activityVariantId !== input.activityVariantId
+      )
         throw new ApiError(
           409,
           'ACTIVITY_VARIANT_ARCHIVED',
@@ -116,7 +131,10 @@ export function createGoalRepository(db: Database): GoalRepository {
       const rows = await db.select().from(tags).where(inArray(tags.id, unique));
       if (rows.length !== unique.length)
         throw new ApiError(404, 'TAG_NOT_FOUND', 'Tag not found');
-      if (active && rows.some((r) => r.archivedAt))
+      if (
+        active &&
+        rows.some((row) => row.archivedAt && !retained?.tagIds.includes(row.id))
+      )
         throw new ApiError(409, 'TAG_ARCHIVED', 'Tag is archived');
     }
     if (input.targetType === 'measurement_total') {
@@ -138,7 +156,11 @@ export function createGoalRepository(db: Database): GoalRepository {
           'MEASUREMENT_DEFINITION_NOT_FOUND',
           'Measurement definition not found',
         );
-      if (active && m.archivedAt)
+      if (
+        active &&
+        m.archivedAt &&
+        retained?.measurementDefinitionId !== input.measurementDefinitionId
+      )
         throw new ApiError(
           409,
           'MEASUREMENT_DEFINITION_ARCHIVED',

@@ -23,5 +23,15 @@ export interface GoalRepository {
   create(input: CreateGoalRequest): Promise<GoalRecord>;
   update(id: string, input: CreateGoalRequest): Promise<GoalRecord | undefined>;
   setArchived(id: string, archived: boolean): Promise<GoalRecord | undefined>;
-  validateReferences(input: CreateGoalRequest, active: boolean): Promise<void>;
+  validateReferences(
+    input: CreateGoalRequest,
+    active: boolean,
+    retained?: Pick<
+      CreateGoalRequest,
+      | 'activityKindId'
+      | 'activityVariantId'
+      | 'tagIds'
+      | 'measurementDefinitionId'
+    >,
+  ): Promise<void>;
 }

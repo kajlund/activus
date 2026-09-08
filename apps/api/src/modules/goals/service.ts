@@ -55,7 +55,7 @@ export class GoalService {
     if (!parsed.success)
       throw new ApiError(400, 'GOAL_INVALID', 'Invalid goal input');
     const value = parsed.data;
-    await this.repository.validateReferences(value, true);
+    await this.repository.validateReferences(value, true, current);
     return toGoal(
       this.require(await this.repository.update(current.id, value)),
     );

@@ -1,6 +1,23 @@
 const approvedNavigations = new WeakSet<Event>();
 export const wasApprovedNavigation = (event: Event) =>
   approvedNavigations.has(event);
+export type NavigationRequest = {
+  resume: () => void;
+  trigger?: HTMLElement | undefined;
+};
+export const navigationRequest = (event: Event) =>
+  event instanceof CustomEvent
+    ? (event.detail as NavigationRequest | undefined)
+    : undefined;
+export function requestRouteChange(request: NavigationRequest) {
+  const event = new CustomEvent<NavigationRequest>('before-route-change', {
+    cancelable: true,
+    detail: request,
+  });
+  if (!window.dispatchEvent(event)) return false;
+  request.resume();
+  return true;
+}
 export function navigationPosition(): number {
   const state = window.history.state as Record<string, unknown> | null;
   return typeof state?.['activusPosition'] === 'number'
@@ -14,22 +31,23 @@ export function initializeNavigation() {
     window.location.href,
   );
 }
-export function navigate(path: string) {
+export function navigate(path: string, trigger?: HTMLElement) {
   if (path === window.location.pathname + window.location.search) return;
-  if (
-    !window.dispatchEvent(
-      new Event('before-route-change', { cancelable: true }),
-    )
-  )
-    return;
-  window.history.pushState(
-    { activusPosition: navigationPosition() + 1 },
-    '',
-    path,
-  );
-  const event = new PopStateEvent('popstate', { state: window.history.state });
-  approvedNavigations.add(event);
-  window.dispatchEvent(event);
+  requestRouteChange({
+    trigger,
+    resume: () => {
+      window.history.pushState(
+        { activusPosition: navigationPosition() + 1 },
+        '',
+        path,
+      );
+      const event = new PopStateEvent('popstate', {
+        state: window.history.state,
+      });
+      approvedNavigations.add(event);
+      window.dispatchEvent(event);
+    },
+  });
 }
 export function interceptNavigation(event: MouseEvent) {
   if (
@@ -56,5 +74,5 @@ export function interceptNavigation(event: MouseEvent) {
   const url = new URL(anchor.href);
   if (url.origin !== window.location.origin) return;
   event.preventDefault();
-  navigate(url.pathname + url.search);
+  navigate(url.pathname + url.search, anchor);
 }
