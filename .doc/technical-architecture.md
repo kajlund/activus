@@ -272,6 +272,10 @@ Calculate status and progress from activities. Do not store mutable progress tot
 
 Goals are archived rather than deleted. Archive is stored; lifecycle is otherwise derived from inclusive `start_date` and `end_date` as upcoming, active, or ended. A goal has one required activity kind, an optional compatible variant, and optional required tags using **match-all** semantics. Fixed goals carry one target for their full range; recurring goals apply the same target to each ISO calendar week (Monday-start), month, or year, with boundary periods clipped to the inclusive range. Targets are activity count, total duration in seconds, or a precise canonical numeric measurement total. Editing a non-archived goal changes the definition used for all historical progress recalculation; Phase 4A stores no progress or period rows.
 
+### Goal progress semantics (Phase 4B)
+
+Progress is calculated on demand from activities whose calendar date is within an inclusive goal/period range, whose kind matches, whose variant matches when selected, and which contain every required goal tag. Extra tags are allowed. Counts count distinct activities, duration sums stored seconds (missing duration contributes zero), and measurement totals sum only the selected definition's exact numeric values (missing values contribute zero). Current values may exceed target; remaining is never below zero and achievement is independent from temporal lifecycle. Recurring week periods begin Monday, are clipped at the overall goal boundaries, and return bounded period rows with independent upcoming/current/ended state. No counters, completion flags, or recurring-period rows are persisted.
+
 ## Database rules
 
 - Generate schema changes through Drizzle migrations committed to version control.

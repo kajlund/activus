@@ -2,7 +2,11 @@ import { Hono } from 'hono';
 import { GoalListQuerySchema } from '@activus/contracts';
 import { jsonBody, query } from '../../transport.js';
 import type { GoalService } from './service.js';
-export function goalRoutes(service: GoalService) {
+import type { GoalProgressService } from './progress-service.js';
+export function goalRoutes(
+  service: GoalService,
+  progress?: GoalProgressService,
+) {
   const routes = new Hono();
   routes.get('/', (c) =>
     c.json(service.list(query(c, GoalListQuerySchema, 'GOAL_INVALID'))),
@@ -13,6 +17,10 @@ export function goalRoutes(service: GoalService) {
     return c.json(goal, 201);
   });
   routes.get('/:id', (c) => c.json(service.get(c.req.param('id'))));
+  if (progress)
+    routes.get('/:id/progress', (c) =>
+      c.json(progress.get(c.req.param('id'), c.req.query())),
+    );
   routes.patch('/:id', async (c) =>
     c.json(
       await service.update(

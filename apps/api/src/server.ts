@@ -10,6 +10,7 @@ import { createMeasurementRepository } from './modules/measurement-definitions/r
 import { createActivityRepository } from './modules/activities/repository.js';
 import { createTagRepository } from './modules/tags/repository.js';
 import { createGoalRepository } from './modules/goals/repository.js';
+import { createGoalProgressRepository } from './modules/goals/progress-repository.js';
 
 loadRootEnv();
 const config = requireDatabase(parseEnv(process.env));
@@ -32,6 +33,7 @@ const app = createApp(config, logger, {
   activities: createActivityRepository(database.db),
   tags: createTagRepository(database.db),
   goals: createGoalRepository(database.db),
+  goalProgress: createGoalProgressRepository(database.db),
 });
 const server = serve({ fetch: app.fetch, port: config.PORT }, (info) => {
   logger.info({ port: info.port }, 'API listening');

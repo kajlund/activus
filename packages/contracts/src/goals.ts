@@ -108,7 +108,49 @@ export const GoalListQuerySchema = z.strictObject({
 export const GoalListResponseSchema = z.strictObject({
   items: z.array(GoalSchema),
 });
+const GoalProgressBaseSchema = z.strictObject({
+  startDate: DateSchema,
+  endDate: DateSchema,
+  targetValue: z.string(),
+  currentValue: z.string(),
+  remainingValue: z.string(),
+  achieved: z.boolean(),
+});
+export const FixedGoalProgressSchema = GoalProgressBaseSchema.extend({
+  scheduleMode: z.literal('fixed'),
+  goalId: z.uuid(),
+  targetType: GoalTargetTypeSchema,
+  lifecycle: z.enum(['upcoming', 'active', 'ended', 'archived']),
+  calculatedAt: z.iso.datetime(),
+});
+export const RecurringGoalPeriodSchema = GoalProgressBaseSchema.extend({
+  temporalState: z.enum(['upcoming', 'current', 'ended']),
+  calendarPeriodStart: DateSchema,
+  calendarPeriodEnd: DateSchema,
+});
+export const RecurringGoalProgressSchema = z.strictObject({
+  scheduleMode: z.literal('recurring'),
+  goalId: z.uuid(),
+  targetType: GoalTargetTypeSchema,
+  lifecycle: z.enum(['upcoming', 'active', 'ended', 'archived']),
+  calculatedAt: z.iso.datetime(),
+  periods: z.array(RecurringGoalPeriodSchema),
+  summary: z.strictObject({
+    periodCount: z.number().int(),
+    periodsAchieved: z.number().int(),
+    periodsEndedUnachieved: z.number().int(),
+  }),
+});
+export const GoalProgressSchema = z.union([
+  FixedGoalProgressSchema,
+  RecurringGoalProgressSchema,
+]);
+export const GoalProgressQuerySchema = z
+  .strictObject({ from: DateSchema.optional(), to: DateSchema.optional() })
+  .refine((v) => !v.from || !v.to || v.from <= v.to, 'Invalid period range');
 export type CreateGoalRequest = z.infer<typeof CreateGoalRequestSchema>;
 export type UpdateGoalRequest = z.infer<typeof UpdateGoalRequestSchema>;
 export type Goal = z.infer<typeof GoalSchema>;
 export type GoalListQuery = z.infer<typeof GoalListQuerySchema>;
+export type GoalProgress = z.infer<typeof GoalProgressSchema>;
+export type GoalProgressQuery = z.infer<typeof GoalProgressQuerySchema>;
