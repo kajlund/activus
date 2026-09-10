@@ -257,7 +257,7 @@ it('guards dirty Cancel navigation, keeps the complete form, then discards once'
   page
     .shadowRoot!.querySelector<HTMLButtonElement>('dialog button.danger')!
     .click();
-  expect(location.pathname).toBe('/activities');
+  expect(location.pathname).toBe('/goals');
 });
 
 it('allows pristine and successfully saved forms to navigate without a discard warning', async () => {
@@ -266,7 +266,7 @@ it('allows pristine and successfully saved forms to navigate without a discard w
     .shadowRoot!.querySelector<HTMLButtonElement>('footer button[type=button]')!
     .click();
   expect(pristine.page.shadowRoot!.querySelector('dialog')).toBeNull();
-  expect(location.pathname).toBe('/activities');
+  expect(location.pathname).toBe('/goals');
 
   document.body.replaceChildren();
   history.replaceState(null, '', '/');
@@ -289,7 +289,39 @@ it('allows pristine and successfully saved forms to navigate without a discard w
   expect(
     saved.page.shadowRoot!.querySelector('dialog[data-confirmation=discard]'),
   ).toBeNull();
-  expect(location.pathname).toBe('/activities');
+  expect(location.pathname).toBe('/goals');
+});
+
+it('returns a created upcoming goal to its lifecycle view and preserves the view on cancel', async () => {
+  const { page, service } = await mountCreate();
+  page.route = '/goals/new?view=ended';
+  service.createGoal.mockResolvedValue({ ...goal, lifecycle: 'upcoming' });
+  const root = page.shadowRoot!;
+  const kind = root.querySelector<HTMLSelectElement>('[name=kind]')!;
+  kind.value = kindId;
+  kind.dispatchEvent(new Event('change', { bubbles: true }));
+  await settle(page);
+  for (const [name, value] of [
+    ['name', 'Next year'],
+    ['value', '10'],
+    ['start', '2099-01-01'],
+    ['end', '2099-12-31'],
+  ])
+    root.querySelector<HTMLInputElement>(`[name=${name}]`)!.value = value!;
+  submit(page);
+  await settle(page);
+  expect(service.createGoal).toHaveBeenCalledOnce();
+  expect(location.pathname + location.search).toBe(
+    '/goals?view=upcoming&saved=1',
+  );
+  document.body.replaceChildren();
+  const next = await mountCreate();
+  next.page.route = '/goals/new?view=archived';
+  await settle(next.page);
+  next.page
+    .shadowRoot!.querySelector<HTMLButtonElement>('footer button[type=button]')!
+    .click();
+  expect(location.pathname + location.search).toBe('/goals?view=archived');
 });
 
 it('does not become dirty for reordered tags or equivalent canonical values', async () => {

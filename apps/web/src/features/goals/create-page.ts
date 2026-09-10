@@ -19,6 +19,7 @@ import {
 } from '../../services/configuration-api.js';
 import { navigate, navigationRequest } from '../../routes/navigation.js';
 import { sameGoalDefinition, sameProgressCriteria } from './comparison.js';
+import { goalReturn, goalsPath } from './state.js';
 
 type GoalFormApi = ConfigurationApi & GoalApi & MeasurementApi & TagApi;
 const newGoalBaseline = (): CreateGoalRequest => ({
@@ -352,11 +353,14 @@ export class GoalFormPage extends LitElement {
         this.selectedMeasurementId = saved.measurementDefinitionId ?? '';
         this.selectedTagIds = new Set(saved.tagIds);
       } else {
-        await this.api.createGoal(input);
+        this.goal = await this.api.createGoal(input);
         this.baseline = input;
       }
       this.setDirty(false);
-      navigate('/activities');
+      const destination = this.goal
+        ? goalsPath(this.goal.lifecycle)
+        : goalReturn(this.route);
+      navigate(`${destination}${destination.includes('?') ? '&' : '?'}saved=1`);
     } catch (error) {
       this.error = error;
     } finally {
@@ -539,7 +543,7 @@ export class GoalFormPage extends LitElement {
             ${this.busy ? 'Saving…' : this.editing ? 'Save changes' : 'Create goal'}</button
           ><button
             type="button"
-            @click=${(event: Event) => navigate('/activities', event.currentTarget as HTMLElement)}
+            @click=${(event: Event) => navigate(goalReturn(this.route), event.currentTarget as HTMLElement)}
           >
             Cancel
           </button>

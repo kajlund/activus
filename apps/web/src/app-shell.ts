@@ -12,6 +12,7 @@ import './features/activities/page.js';
 import './features/journal/page.js';
 import './features/journal/detail.js';
 import './features/goals/create-page.js';
+import './features/goals/page.js';
 import { withReturn } from './features/journal/state.js';
 
 const destinations = [
@@ -367,53 +368,60 @@ export class ActivusApp extends LitElement {
         </aside>
         <main id="main" tabindex="-1">
           ${
-            pathname === '/goals/new' || /^\/goals\/[^/]+\/edit$/.test(pathname)
-              ? html`<goal-form-page .route=${this.location}></goal-form-page>`
-              : pathname === '/activities/new' ||
-                  /^\/activities\/[^/]+\/edit$/.test(pathname)
-                ? html`<activity-editor-page
+            pathname === '/goals'
+              ? html`<goals-page .route=${this.location}></goals-page>`
+              : pathname === '/goals/new' ||
+                  /^\/goals\/[^/]+\/edit$/.test(pathname)
+                ? html`<goal-form-page
                     .route=${this.location}
-                  ></activity-editor-page>`
-                : pathname === '/activities'
-                  ? html`<activity-journal-page
+                  ></goal-form-page>`
+                : pathname === '/activities/new' ||
+                    /^\/activities\/[^/]+\/edit$/.test(pathname)
+                  ? html`<activity-editor-page
                       .route=${this.location}
-                    ></activity-journal-page>`
-                  : /^\/activities\/[^/]+$/.test(pathname)
-                    ? html`<activity-detail-page
+                    ></activity-editor-page>`
+                  : pathname === '/activities'
+                    ? html`<activity-journal-page
                         .route=${this.location}
-                      ></activity-detail-page>`
-                    : isKinds
-                      ? html`<activity-kinds-page
+                      ></activity-journal-page>`
+                    : /^\/activities\/[^/]+$/.test(pathname)
+                      ? html`<activity-detail-page
                           .route=${this.location}
-                        ></activity-kinds-page>`
-                      : pathname === '/tags'
-                        ? html`<tags-page .route=${this.location}></tags-page>`
-                        : pathname === '/settings'
-                          ? html`<div class="settings">
-                              <h1>Settings</h1>
-                              <p>
-                                Manage the configuration used by your journal.
-                              </p>
-                              <ul aria-label="Configuration">
-                                <li>
-                                  <a href="/activity-kinds"
-                                    >Activity kinds and measurements</a
-                                  >
-                                </li>
-                                <li><a href="/tags">Tags</a></li>
-                              </ul>
-                            </div>`
-                          : current
-                            ? html`<h1>${current[0]}</h1>
+                        ></activity-detail-page>`
+                      : isKinds
+                        ? html`<activity-kinds-page
+                            .route=${this.location}
+                          ></activity-kinds-page>`
+                        : pathname === '/tags'
+                          ? html`<tags-page
+                              .route=${this.location}
+                            ></tags-page>`
+                          : pathname === '/settings'
+                            ? html`<div class="settings">
+                                <h1>Settings</h1>
                                 <p>
-                                  ${pathname === '/' ? 'Your recorded activities are available in the journal.' : 'This section is planned for a later phase.'}
+                                  Manage the configuration used by your journal.
                                 </p>
-                                <a href="/activities">Open journal</a>`
-                            : html`<h1>Page not found</h1>
-                                <p>
-                                  This address does not match an Activus page.
-                                </p>
-                                <a href="/activities">Return to journal</a>`
+                                <ul aria-label="Configuration">
+                                  <li>
+                                    <a href="/activity-kinds"
+                                      >Activity kinds and measurements</a
+                                    >
+                                  </li>
+                                  <li><a href="/tags">Tags</a></li>
+                                </ul>
+                              </div>`
+                            : current
+                              ? html`<h1>${current[0]}</h1>
+                                  <p>
+                                    ${pathname === '/' ? 'Your recorded activities are available in the journal.' : 'This section is planned for a later phase.'}
+                                  </p>
+                                  <a href="/activities">Open journal</a>`
+                              : html`<h1>Page not found</h1>
+                                  <p>
+                                    This address does not match an Activus page.
+                                  </p>
+                                  <a href="/activities">Return to journal</a>`
           }
         </main>
       </div>

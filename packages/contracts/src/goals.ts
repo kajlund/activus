@@ -103,7 +103,7 @@ export const GoalListQuerySchema = z.strictObject({
     .enum(['true', 'false'])
     .transform((v) => v === 'true')
     .default(false),
-  lifecycle: z.enum(['upcoming', 'active', 'ended']).optional(),
+  lifecycle: z.enum(['upcoming', 'active', 'ended', 'archived']).optional(),
 });
 export const GoalListResponseSchema = z.strictObject({
   items: z.array(GoalSchema),
@@ -154,3 +154,36 @@ export type Goal = z.infer<typeof GoalSchema>;
 export type GoalListQuery = z.infer<typeof GoalListQuerySchema>;
 export type GoalProgress = z.infer<typeof GoalProgressSchema>;
 export type GoalProgressQuery = z.infer<typeof GoalProgressQuerySchema>;
+
+export const GoalOverviewQuerySchema = z.strictObject({
+  lifecycle: z
+    .enum(['active', 'upcoming', 'ended', 'archived'])
+    .default('active'),
+});
+export const GoalOverviewProgressSchema = z.union([
+  FixedGoalProgressSchema,
+  RecurringGoalProgressSchema.omit({ periods: true, summary: true }).extend({
+    currentPeriod: RecurringGoalPeriodSchema.nullable(),
+    completedPeriods: z.number().int(),
+    completedPeriodsAchieved: z.number().int(),
+  }),
+]);
+export const GoalOverviewItemSchema = z.strictObject({
+  goal: GoalSchema,
+  kindName: z.string(),
+  iconName: z.string(),
+  variantName: z.string().nullable(),
+  tagNames: z.array(z.string()),
+  measurementName: z.string().nullable(),
+  unitSymbol: z.string().nullable(),
+  displayCurrent: z.string().nullable(),
+  displayTarget: z.string(),
+  progress: GoalOverviewProgressSchema.nullable(),
+});
+export const GoalOverviewResponseSchema = z.strictObject({
+  items: z.array(GoalOverviewItemSchema),
+  hasGoals: z.boolean(),
+});
+export type GoalOverviewQuery = z.infer<typeof GoalOverviewQuerySchema>;
+export type GoalOverviewItem = z.infer<typeof GoalOverviewItemSchema>;
+export type GoalOverviewResponse = z.infer<typeof GoalOverviewResponseSchema>;

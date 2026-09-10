@@ -37,6 +37,12 @@ import { testDatabaseConfig } from '../support/test-database-config.js';
 import { validKind } from '../support/activity-kind-repository.js';
 import { validMeasurement, validVariant } from '../support/configuration.js';
 import { validActivity } from '../support/activities.js';
+import { goals, goalTags, tags, activityTags } from '../../src/db/schema.js';
+import { createGoalRepository } from '../../src/modules/goals/repository.js';
+import { createGoalProgressRepository } from '../../src/modules/goals/progress-repository.js';
+import { GoalService } from '../../src/modules/goals/service.js';
+import { GoalProgressService } from '../../src/modules/goals/progress-service.js';
+import { GoalOverviewResponseSchema } from '@activus/contracts';
 loadRootEnv();
 const env = parseEnv(process.env);
 const safe = env.TEST_DATABASE_URL ? testDatabaseConfig(env) : undefined;
@@ -96,6 +102,9 @@ describe.skipIf(!safe)('PostgreSQL activities and typed measurements', () => {
   });
   afterEach(async () => {
     if (!database || !ownedKinds.length) return;
+    await database.db
+      .delete(goals)
+      .where(inArray(goals.activityKindId, ownedKinds));
     // Only records owned by this suite's generated kind IDs. Never truncate/drop.
     await database.db
       .delete(activities)
@@ -117,6 +126,105 @@ describe.skipIf(!safe)('PostgreSQL activities and typed measurements', () => {
   });
   afterAll(async () => {
     if (database) await database.close();
+  });
+  it('loads compact goal overview progress without multiplying activities by required tags', async () => {
+    const goalRepository = createGoalRepository(database.db);
+    const goalService = new GoalService(goalRepository);
+    const progressRepository = createGoalProgressRepository(database.db);
+    const progress = new GoalProgressService(
+      goalRepository,
+      progressRepository,
+    );
+    const createdTags = await database.db
+      .insert(tags)
+      .values([
+        { name: randomUUID(), color: '#67318F' },
+        { name: randomUUID(), color: '#67318F' },
+      ])
+      .returning();
+    try {
+      const activity = await create({
+        activityDate: '2000-01-04',
+        durationSeconds: 3600,
+      });
+      await database.db
+        .insert(activityTags)
+        .values(
+          createdTags.map((t) => ({ activityId: activity.id, tagId: t.id })),
+        );
+      const definition = {
+        name: 'Overview',
+        activityKindId: kindId,
+        targetType: 'activity_count',
+        targetValue: 1,
+        startDate: '2000-01-01',
+        endDate: '2000-01-31',
+        scheduleMode: 'fixed',
+        tagIds: createdTags.map((t) => t.id),
+      };
+      const fixed = await goalService.create(definition);
+      const recurring = await goalService.create({
+        ...definition,
+        name: 'Weekly overview',
+        scheduleMode: 'recurring',
+        recurrencePeriod: 'week',
+      });
+      const app = createApp(env, pino({ level: 'silent' }), {
+        goals: goalRepository,
+        goalProgress: progressRepository,
+      });
+      const response = await app.request(
+        '/api/v1/goals/overview?lifecycle=ended',
+      );
+      expect(response.status).toBe(200);
+      const body = GoalOverviewResponseSchema.parse(await response.json());
+      const own = body.items.filter((i) => i.goal.activityKindId === kindId);
+      expect(own).toHaveLength(2);
+      expect(own.find((i) => i.goal.id === fixed.id)?.progress).toMatchObject({
+        currentValue: '1',
+        achieved: true,
+      });
+      expect(
+        own.find((i) => i.goal.id === recurring.id)?.progress,
+      ).toMatchObject({
+        currentPeriod: null,
+        completedPeriods: 6,
+        completedPeriodsAchieved: 1,
+      });
+      expect(own[0]?.tagNames).toHaveLength(2);
+      expect(
+        (await progress.overview({ lifecycle: 'upcoming' })).items.some(
+          (i) => i.goal.activityKindId === kindId,
+        ),
+      ).toBe(false);
+      await goalService.update(fixed.id, { name: 'Updated overview' });
+      await goalService.archive(fixed.id);
+      expect(
+        (await progress.overview({ lifecycle: 'archived' })).items.some(
+          (i) => i.goal.id === fixed.id,
+        ),
+      ).toBe(true);
+      expect((await goalService.restore(fixed.id)).lifecycle).toBe('ended');
+    } finally {
+      await database.db.delete(goalTags).where(
+        inArray(
+          goalTags.tagId,
+          createdTags.map((t) => t.id),
+        ),
+      );
+      await database.db.delete(activityTags).where(
+        inArray(
+          activityTags.tagId,
+          createdTags.map((t) => t.id),
+        ),
+      );
+      await database.db.delete(tags).where(
+        inArray(
+          tags.id,
+          createdTags.map((t) => t.id),
+        ),
+      );
+    }
   });
   it('keeps journal reads bounded and records query plans for a ten-thousand-activity history', async () => {
     const variant = await variants.create(kindId, {

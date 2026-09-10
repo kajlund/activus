@@ -276,6 +276,16 @@ Goals are archived rather than deleted. Archive is stored; lifecycle is otherwis
 
 Progress is calculated on demand from activities whose calendar date is within an inclusive goal/period range, whose kind matches, whose variant matches when selected, and which contain every required goal tag. Extra tags are allowed. Counts count distinct activities, duration sums stored seconds (missing duration contributes zero), and measurement totals sum only the selected definition's exact numeric values (missing values contribute zero). Current values may exceed target; remaining is never below zero and achievement is independent from temporal lifecycle. Recurring week periods begin Monday, are clipped at the overall goal boundaries, and return bounded period rows with independent upcoming/current/ended state. No counters, completion flags, or recurring-period rows are persisted.
 
+### Goal overview (Phase 4D)
+
+`/goals` uses `?view=upcoming|ended|archived`, with active as the default and invalid values falling back to active. Create and edit return to the saved goal's server-derived lifecycle view; cancel retains the originating view. No goal-detail route is implemented yet.
+
+`GET /api/v1/goals/overview?lifecycle=active|upcoming|ended|archived` returns shared typed definitions, reference labels, display-unit values, and compact progress. A nonempty view uses four database queries regardless of goal count: selected definitions, reference labels, existence across all views, and one grouped daily-progress batch. Required tags use match-all existence checks rather than row-multiplying joins. There is no per-row progress HTTP request or reference lookup.
+
+The overview reuses the Phase 4B calculator. Fixed values retain over-target progress. Recurring calculation consumes periods without retaining history rows, returning only the current period and completed/achieved completed-period counts. Overview summaries cover the full definition, including goals longer than the detail endpoint's 520-row response limit. Measurement display conversion uses existing exact decimal arithmetic; canonical values still drive achievement and the visual bar. Aggregate read failure returns null progress and null displayCurrent while preserving definitions and targets.
+
+Archive requires confirmation; restore returns the goal to its derived lifecycle and preserves the backend conflict message. Both operations retain the row on failure. Phase 4E must preserve independent lifecycle and achievement, clipped calendar periods, match-all tags, exact canonical values, the compact overview response, and recalculation after definition/history edits.
+
 ## Database rules
 
 - Generate schema changes through Drizzle migrations committed to version control.

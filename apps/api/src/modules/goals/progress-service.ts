@@ -4,7 +4,21 @@ import { parseId } from '../../transport.js';
 import { toGoal } from './mapper.js';
 import type { GoalRecord, GoalRepository } from './model.js';
 import type { DailyAggregate } from './progress-repository.js';
+import type { createGoalProgressRepository } from './progress-repository.js';
+import {
+  measurementUnits,
+  type GoalOverviewQuery,
+  type GoalOverviewResponse,
+} from '@activus/contracts';
+import {
+  decimal as preciseDecimal,
+  divideForDisplay,
+} from '../activities/decimal.js';
 type Clock = () => string;
+type RecurringPeriod = Extract<
+  GoalProgress,
+  { scheduleMode: 'recurring' }
+>['periods'][number];
 const addDays = (d: string, n: number) => {
   const x = new Date(`${d}T12:00:00Z`);
   x.setUTCDate(x.getUTCDate() + n);
@@ -62,9 +76,96 @@ export class GoalProgressService {
     private readonly goals: GoalRepository,
     private readonly data: {
       aggregate(goal: GoalRecord): Promise<DailyAggregate[]>;
-    },
+    } & Partial<
+      Pick<
+        ReturnType<typeof createGoalProgressRepository>,
+        'aggregateMany' | 'overviewMetadata'
+      >
+    >,
     private readonly clock: Clock = () => new Date().toISOString().slice(0, 10),
   ) {}
+  async overview(query: GoalOverviewQuery): Promise<GoalOverviewResponse> {
+    if (!this.data.aggregateMany || !this.data.overviewMetadata)
+      throw new Error('Overview repository unavailable');
+    const records = await this.goals.list({
+      lifecycle: query.lifecycle,
+      includeArchived: query.lifecycle === 'archived',
+    });
+    const ids = records.map((g) => g.id);
+    const metadata = await this.data.overviewMetadata(ids);
+    let daily: Array<DailyAggregate & { goalId: string }> | null;
+    try {
+      daily = await this.data.aggregateMany(ids);
+    } catch {
+      daily = null;
+    }
+    return {
+      hasGoals: metadata.hasGoals,
+      items: records.map((record) => {
+        const meta = metadata.rows.find((m) => m.id === record.id);
+        if (!meta) throw new Error('Goal references unavailable');
+        const unit = measurementUnits.find((u) => u.id === meta.displayUnit);
+        const display = (value: string) =>
+          unit
+            ? divideForDisplay(
+                preciseDecimal(value),
+                preciseDecimal(unit.factorToCanonical),
+                meta.precision ?? unit.defaultPrecision,
+              )
+            : value;
+        const completed = {
+          count: 0,
+          achieved: 0,
+          current: null as RecurringPeriod | null,
+        };
+        const result =
+          daily === null
+            ? null
+            : this.calculate(
+                record,
+                daily.filter((d) => d.goalId === record.id),
+                {},
+                (period) => {
+                  if (period.temporalState === 'current')
+                    completed.current = period;
+                  if (period.temporalState === 'ended') {
+                    completed.count++;
+                    if (period.achieved) completed.achieved++;
+                  }
+                },
+              );
+        const progress =
+          result?.scheduleMode === 'recurring'
+            ? {
+                scheduleMode: result.scheduleMode,
+                goalId: result.goalId,
+                targetType: result.targetType,
+                lifecycle: result.lifecycle,
+                calculatedAt: result.calculatedAt,
+                currentPeriod: completed.current,
+                completedPeriods: completed.count,
+                completedPeriodsAchieved: completed.achieved,
+              }
+            : result;
+        const value =
+          progress?.scheduleMode === 'fixed'
+            ? progress.currentValue
+            : progress?.currentPeriod?.currentValue;
+        return {
+          goal: toGoal(record),
+          kindName: meta.kindName,
+          iconName: meta.iconName,
+          variantName: meta.variantName,
+          tagNames: meta.tagNames,
+          measurementName: meta.measurementName,
+          unitSymbol: unit?.symbol ?? null,
+          displayCurrent: value === undefined ? null : display(value),
+          displayTarget: display(record.targetValue),
+          progress,
+        };
+      }),
+    };
+  }
   async get(id: string, input: unknown): Promise<GoalProgress> {
     const q = GoalProgressQuerySchema.safeParse(input);
     if (!q.success)
@@ -76,6 +177,14 @@ export class GoalProgressService {
     const goal = await this.goals.find(parseId(id, 'GOAL_INVALID'));
     if (!goal) throw new ApiError(404, 'GOAL_NOT_FOUND', 'Goal not found');
     const daily = await this.data.aggregate(goal);
+    return this.calculate(goal, daily, q.data);
+  }
+  calculate(
+    goal: GoalRecord,
+    daily: DailyAggregate[],
+    query: { from?: string | undefined; to?: string | undefined } = {},
+    onPeriod?: (period: RecurringPeriod) => void,
+  ): GoalProgress {
     const sum = (rows: DailyAggregate[]) => {
       const precision = Math.max(0, ...rows.map((x) => scale(x.value)));
       const amount = rows.reduce(
@@ -119,18 +228,20 @@ export class GoalProgressService {
         achieved: boolean;
       }> = [];
     let cursor = first;
-    while (cursor <= goal.endDate && periods.length < 520) {
+    // Overview consumes each period without retaining or returning history. The
+    // detail endpoint keeps its established 520-row bound.
+    while (cursor <= goal.endDate && (onPeriod || periods.length < 520)) {
       const fullEnd = addDays(nextPeriod(cursor, p), -1),
         start = cursor < goal.startDate ? goal.startDate : cursor,
         end = fullEnd > goal.endDate ? goal.endDate : fullEnd;
       if (
-        (!q.data.from || end >= q.data.from) &&
-        (!q.data.to || start <= q.data.to)
+        (!query.from || end >= query.from) &&
+        (!query.to || start <= query.to)
       ) {
         const current = sum(
           daily.filter((x) => x.activityDate >= start && x.activityDate <= end),
         );
-        periods.push({
+        const period: RecurringPeriod = {
           calendarPeriodStart: cursor,
           calendarPeriodEnd: fullEnd,
           startDate: start,
@@ -142,7 +253,9 @@ export class GoalProgressService {
                 ? 'ended'
                 : 'current',
           ...arithmetic(current, String(goal.targetValue)),
-        });
+        };
+        if (onPeriod) onPeriod(period);
+        else periods.push(period);
       }
       cursor = nextPeriod(cursor, p);
     }

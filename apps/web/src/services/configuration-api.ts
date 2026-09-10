@@ -13,6 +13,9 @@ import {
 } from '@activus/contracts';
 import {
   GoalSchema,
+  GoalOverviewResponseSchema,
+  type GoalOverviewQuery,
+  type GoalOverviewResponse,
   type Goal,
   type CreateGoalRequest,
   type UpdateGoalRequest,
@@ -49,6 +52,14 @@ export interface GoalApi {
     input: UpdateGoalRequest,
     signal?: AbortSignal,
   ): Promise<Goal>;
+}
+export interface GoalOverviewApi {
+  overviewGoals(
+    query: GoalOverviewQuery,
+    signal?: AbortSignal,
+  ): Promise<GoalOverviewResponse>;
+  archiveGoal(id: string): Promise<Goal>;
+  restoreGoal(id: string): Promise<Goal>;
 }
 export interface JournalApi {
   listActivities(
@@ -132,6 +143,7 @@ export class ClientError extends Error {
     public readonly code: string,
     public readonly requestId?: string,
     public readonly details?: ApiErrorResponse['error']['details'],
+    public readonly serverMessage?: string,
   ) {
     super(code);
   }
@@ -185,6 +197,8 @@ const messages: Record<string, string> = {
 export function clientMessage(error: unknown) {
   if (!(error instanceof ClientError))
     return 'Something went wrong. Please try again.';
+  if (error.code === 'GOAL_RESTORE_BLOCKED' && error.serverMessage)
+    return error.serverMessage;
   return (
     messages[error.code] ??
     {
@@ -241,7 +255,8 @@ export function createConfigurationApi(
   TagApi &
   ActivityApi &
   JournalApi &
-  GoalApi {
+  GoalApi &
+  GoalOverviewApi {
   const transport =
     options.fetch ?? ((...args: Parameters<typeof fetch>) => fetch(...args));
   async function request<T>(
@@ -294,6 +309,7 @@ export function createConfigurationApi(
           parsed.data.error.code,
           parsed.data.error.requestId,
           parsed.data.error.details,
+          parsed.data.error.message,
         );
       }
       const parsed = schema.safeParse(body);
@@ -325,6 +341,18 @@ export function createConfigurationApi(
     `/measurement-definitions/${encodeURIComponent(id)}`;
   let units: Promise<{ items: MeasurementUnit[] }> | undefined;
   return {
+    overviewGoals: (query, signal) =>
+      request(
+        `/goals/overview?lifecycle=${query.lifecycle}`,
+        GoalOverviewResponseSchema,
+        'GET',
+        undefined,
+        signal,
+      ),
+    archiveGoal: (id) =>
+      request(`/goals/${encodeURIComponent(id)}/archive`, GoalSchema, 'POST'),
+    restoreGoal: (id) =>
+      request(`/goals/${encodeURIComponent(id)}/restore`, GoalSchema, 'POST'),
     getGoal: (id, signal) =>
       request(
         `/goals/${encodeURIComponent(id)}`,

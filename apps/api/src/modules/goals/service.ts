@@ -46,8 +46,20 @@ export class GoalService {
         'Archived goals cannot be updated',
       );
     const patch = this.parse(input, true);
+    const {
+      id: _id,
+      archivedAt: _archivedAt,
+      createdAt: _createdAt,
+      updatedAt: _updatedAt,
+      ...definition
+    } = current;
+    void [_id, _archivedAt, _createdAt, _updatedAt];
     const complete = {
-      ...current,
+      ...definition,
+      targetValue:
+        current.targetType === 'measurement_total'
+          ? current.targetValue
+          : Number(current.targetValue),
       ...patch,
       tagIds: Array.isArray(patch.tagIds) ? patch.tagIds : current.tagIds,
     };
@@ -74,11 +86,13 @@ export class GoalService {
     if (!row.archivedAt) return toGoal(row);
     try {
       await this.repository.validateReferences(row as never, true);
-    } catch {
+    } catch (error) {
       throw new ApiError(
         409,
         'GOAL_RESTORE_BLOCKED',
-        'Goal cannot be restored because a referenced definition is unavailable',
+        error instanceof ApiError
+          ? error.message
+          : 'Goal cannot be restored because a referenced definition is unavailable',
       );
     }
     return toGoal(

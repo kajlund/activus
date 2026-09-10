@@ -200,7 +200,11 @@ export function createGoalRepository(db: Database): GoalRepository {
         .leftJoin(goalTags, eq(goalTags.goalId, goals.id))
         .where(
           and(
-            query.includeArchived ? undefined : isNull(goals.archivedAt),
+            lifecycle === 'archived'
+              ? sql`${goals.archivedAt} IS NOT NULL`
+              : query.includeArchived
+                ? undefined
+                : isNull(goals.archivedAt),
             lifecycle === 'upcoming'
               ? sql`${goals.startDate}>${today}`
               : lifecycle === 'active'
