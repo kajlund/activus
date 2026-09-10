@@ -19,7 +19,7 @@ import {
 } from '../../services/configuration-api.js';
 import { navigate, navigationRequest } from '../../routes/navigation.js';
 import { sameGoalDefinition, sameProgressCriteria } from './comparison.js';
-import { goalReturn, goalsPath } from './state.js';
+import { goalReturn, goalsPath, safeGoalDetailReturn } from './state.js';
 
 type GoalFormApi = ConfigurationApi & GoalApi & MeasurementApi & TagApi;
 const newGoalBaseline = (): CreateGoalRequest => ({
@@ -357,9 +357,11 @@ export class GoalFormPage extends LitElement {
         this.baseline = input;
       }
       this.setDirty(false);
-      const destination = this.goal
-        ? goalsPath(this.goal.lifecycle)
-        : goalReturn(this.route);
+      const destination =
+        safeGoalDetailReturn(
+          new URL(this.route, location.origin).searchParams.get('returnTo'),
+        ) ??
+        (this.goal ? goalsPath(this.goal.lifecycle) : goalReturn(this.route));
       navigate(`${destination}${destination.includes('?') ? '&' : '?'}saved=1`);
     } catch (error) {
       this.error = error;

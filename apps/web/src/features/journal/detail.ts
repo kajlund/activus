@@ -40,6 +40,7 @@ export class ActivityDetailPage extends LitElement {
   }
   private get back() {
     const target = safeReturn(this.url.searchParams.get('returnTo'));
+    if (target.startsWith('/goals/')) return target;
     return new URL(target, location.origin).pathname === '/activities'
       ? target
       : '/activities';
@@ -75,7 +76,9 @@ export class ActivityDetailPage extends LitElement {
   }
   override render() {
     const a = this.activity;
-    return html`<a class="back" href=${this.back}>Back to journal</a>${
+    return html`<a class="back" href=${this.back}
+        >${this.back.startsWith('/goals/') ? 'Back to goal' : 'Back to journal'}</a
+      >${
         this.loading
           ? html`<h1>Activity</h1>
               <p class="status" role="status">Loading activity…</p>`

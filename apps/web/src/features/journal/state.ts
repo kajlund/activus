@@ -2,6 +2,7 @@ import {
   ActivityListQuerySchema,
   type ActivityListQuery,
 } from '@activus/contracts';
+import { safeGoalDetailReturn } from '../goals/state.js';
 
 export const pageSize = 25;
 export type Filters = Pick<
@@ -69,6 +70,8 @@ export function journalPath(filters: Filters = {}) {
   return `/activities${params.size ? `?${params}` : ''}`;
 }
 export function safeReturn(raw: string | null): string {
+  const goal = safeGoalDetailReturn(raw);
+  if (goal) return goal;
   if (
     !raw ||
     raw.length > 6000 ||
@@ -83,6 +86,9 @@ export function safeReturn(raw: string | null): string {
       return journalPath(parseJournal(url.search).filters);
     if (/^\/activities\/[0-9a-f-]{36}$/i.test(url.pathname)) {
       const back = url.searchParams.get('returnTo');
+      const goalBack = safeGoalDetailReturn(back);
+      if (goalBack)
+        return `${url.pathname}?returnTo=${encodeURIComponent(goalBack)}`;
       return `${url.pathname}${back?.startsWith('/activities?') ? `?returnTo=${encodeURIComponent(journalPath(parseJournal(back.slice(back.indexOf('?'))).filters))}` : ''}`;
     }
   } catch {

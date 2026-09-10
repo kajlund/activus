@@ -2,6 +2,8 @@ import { Hono } from 'hono';
 import {
   GoalListQuerySchema,
   GoalOverviewQuerySchema,
+  GoalPeriodsQuerySchema,
+  GoalContributionsQuerySchema,
 } from '@activus/contracts';
 import { jsonBody, query } from '../../transport.js';
 import type { GoalService } from './service.js';
@@ -11,6 +13,27 @@ export function goalRoutes(
   progress?: GoalProgressService,
 ) {
   const routes = new Hono();
+  if (progress) {
+    routes.get('/:id/detail', async (c) =>
+      c.json(await progress.detail(c.req.param('id'))),
+    );
+    routes.get('/:id/periods', async (c) =>
+      c.json(
+        await progress.periods(
+          c.req.param('id'),
+          query(c, GoalPeriodsQuerySchema, 'GOAL_PROGRESS_INVALID'),
+        ),
+      ),
+    );
+    routes.get('/:id/contributions', async (c) =>
+      c.json(
+        await progress.contributions(
+          c.req.param('id'),
+          query(c, GoalContributionsQuerySchema, 'GOAL_PROGRESS_INVALID'),
+        ),
+      ),
+    );
+  }
   if (progress)
     routes.get('/overview', async (c) =>
       c.json(

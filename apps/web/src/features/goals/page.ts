@@ -9,11 +9,11 @@ import {
   clientMessage,
   type GoalOverviewApi,
 } from '../../services/configuration-api.js';
-import { trapDialogFocus } from '../../components/dialog-focus.js';
+import { archiveConfirmation } from './presentation.js';
 import { navigate } from '../../routes/navigation.js';
 import { activityIcon } from '../activity-kinds/icons.js';
 import { duration, exactNumber, journalDate } from '../journal/format.js';
-import { goalsPath, goalView, goalViews } from './state.js';
+import { goalDetailPath, goalsPath, goalView, goalViews } from './state.js';
 
 const title = (s: string) => s[0]!.toUpperCase() + s.slice(1);
 export class GoalsPage extends LitElement {
@@ -169,7 +169,11 @@ export class GoalsPage extends LitElement {
     return html`<li>
       <div class="row-head">
         <div class="definition">
-          <h2>${g.name}</h2>
+          <h2>
+            <a class="goal-link" href=${goalDetailPath(g.id, this.view)}
+              >${g.name}</a
+            >
+          </h2>
           <p class="scope">
             ${activityIcon(item.iconName)}
             ${item.kindName}${item.variantName ? ` · ${item.variantName}` : ''}
@@ -255,33 +259,15 @@ export class GoalsPage extends LitElement {
       }
       ${
         this.pending
-          ? html`<dialog
-              aria-labelledby="archive-title"
-              @keydown=${trapDialogFocus}
-              @cancel=${(e: Event) => {
-                e.preventDefault();
-                this.close();
-              }}
-            >
-              <h2 id="archive-title">Archive this goal?</h2>
-              <p>${this.pending.goal.name}</p>
-              <p>Its definition and historical progress will be preserved.</p>
-              ${this.actionError ? html`<p role="alert">${clientMessage(this.actionError)}</p>` : nothing}
-              <div class="actions">
-                <button
-                  class="cancel"
-                  ?disabled=${this.busy}
-                  @click=${this.close}
-                >
-                  Cancel</button
-                ><button
-                  ?disabled=${this.busy}
-                  @click=${() => this.change(this.pending!, false)}
-                >
-                  ${this.busy ? 'Archiving…' : 'Archive goal'}
-                </button>
-              </div>
-            </dialog>`
+          ? archiveConfirmation(
+              this.pending.goal.name,
+              this.busy,
+              this.actionError,
+              () => this.close(),
+              () => {
+                void this.change(this.pending!, false);
+              },
+            )
           : nothing
       }`;
   }
@@ -317,6 +303,16 @@ export class GoalsPage extends LitElement {
     header {
       align-items: center;
       margin-bottom: 24px;
+    }
+    .goal-link {
+      padding: 0;
+      justify-content: flex-start;
+      color: var(--color-text);
+      text-align: left;
+      text-decoration: none;
+    }
+    .goal-link:hover {
+      text-decoration: underline;
     }
     .definition {
       min-width: 0;

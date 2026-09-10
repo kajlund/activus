@@ -97,7 +97,7 @@ it('selects every lifecycle through the typed API, reflects URL state and defaul
       { lifecycle: view },
       expect.any(AbortSignal),
     );
-    expect(root.querySelector('h2')?.textContent).toBe(`${view} goal`);
+    expect(root.querySelector('h2')?.textContent?.trim()).toBe(`${view} goal`);
     expect(root.querySelector('nav [aria-current=page]')?.textContent).toBe(
       view[0]!.toUpperCase() + view.slice(1),
     );

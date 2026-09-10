@@ -42,7 +42,12 @@ import { createGoalRepository } from '../../src/modules/goals/repository.js';
 import { createGoalProgressRepository } from '../../src/modules/goals/progress-repository.js';
 import { GoalService } from '../../src/modules/goals/service.js';
 import { GoalProgressService } from '../../src/modules/goals/progress-service.js';
-import { GoalOverviewResponseSchema } from '@activus/contracts';
+import {
+  GoalOverviewResponseSchema,
+  GoalContributionsResponseSchema,
+  GoalDetailSchema,
+  GoalPeriodsResponseSchema,
+} from '@activus/contracts';
 loadRootEnv();
 const env = parseEnv(process.env);
 const safe = env.TEST_DATABASE_URL ? testDatabaseConfig(env) : undefined;
@@ -126,6 +131,188 @@ describe.skipIf(!safe)('PostgreSQL activities and typed measurements', () => {
   });
   afterAll(async () => {
     if (database) await database.close();
+  });
+  it('paginates qualifying goal activities using the same scope as exact progress, retaining missing and archived values', async () => {
+    const variant = await variants.create(kindId, validVariant);
+    const measurement = await definitions.create(kindId, {
+      ...validMeasurement,
+      precision: 6,
+    });
+    const tagRows = await database.db
+      .insert(tags)
+      .values([
+        { name: randomUUID(), color: '#67318F' },
+        { name: randomUUID(), color: '#67318F' },
+      ])
+      .returning();
+    const tagIds = tagRows.map((t) => t.id);
+    const goalRepository = createGoalRepository(database.db);
+    const goalService = new GoalService(goalRepository);
+    const goalProgress = createGoalProgressRepository(database.db);
+    const app = createApp(env, pino({ level: 'silent' }), {
+      goals: goalRepository,
+      goalProgress,
+    });
+    try {
+      const common = {
+        activityVariantId: variant.id,
+        tagIds,
+        activityDate: '2000-01-04',
+        durationSeconds: 60,
+      };
+      const exact = await create({
+        ...common,
+        measurements: [
+          {
+            measurementDefinitionId: measurement.id,
+            valueType: 'decimal',
+            value: '2.500125',
+            unitId: 'kilometre',
+          },
+        ],
+      });
+      const zero = await create({
+        ...common,
+        measurements: [
+          {
+            measurementDefinitionId: measurement.id,
+            valueType: 'decimal',
+            value: '0',
+            unitId: 'kilometre',
+          },
+        ],
+      });
+      const missing = await create({ ...common });
+      // Exclude the wrong variant, missing required tag, date, and kind.
+      await create({ ...common, activityVariantId: null });
+      await create({ ...common, tagIds: tagIds.slice(0, 1) });
+      await create({ ...common, activityDate: '1999-12-31' });
+      await create({
+        ...common,
+        activityKindId: await newKind(),
+        activityVariantId: null,
+      });
+      const definition = {
+        name: 'Qualifying distance',
+        activityKindId: kindId,
+        activityVariantId: variant.id,
+        tagIds,
+        targetType: 'measurement_total',
+        targetValue: '5000',
+        measurementDefinitionId: measurement.id,
+        scheduleMode: 'fixed',
+        startDate: '2000-01-01',
+        endDate: '2000-01-31',
+      };
+      const fixed = await goalService.create(definition);
+      const get = (path: string) =>
+        app.request(`/api/v1/goals/${fixed.id}${path}`);
+      const firstResponse = await get('/contributions?limit=2');
+      expect(firstResponse.status).toBe(200);
+      const first = GoalContributionsResponseSchema.parse(
+        await firstResponse.json(),
+      );
+      const second = GoalContributionsResponseSchema.parse(
+        await (await get('/contributions?limit=2&offset=2')).json(),
+      );
+      const all = [...first.items, ...second.items];
+      expect(all.map((i) => i.activity.id)).toEqual([
+        missing.id,
+        zero.id,
+        exact.id,
+      ]);
+      expect(new Set(all.map((i) => i.activity.id)).size).toBe(3);
+      expect(all.map((i) => i.canonicalContribution)).toEqual([
+        null,
+        '0',
+        '2500.125',
+      ]);
+      expect(all[2]?.displayContribution).toBe('2.500125');
+      expect(first.pagination.nextOffset).toBe(2);
+      expect(second.pagination.hasMore).toBe(false);
+      const detail = GoalDetailSchema.parse(
+        await (await get('/detail')).json(),
+      );
+      expect(detail.progress).toMatchObject({
+        currentValue: '2500.125',
+        remainingValue: '2499.875',
+      });
+      const count = await goalService.create({
+        ...definition,
+        name: 'Count',
+        targetType: 'activity_count',
+        targetValue: 3,
+        measurementDefinitionId: null,
+      });
+      const countProgress = await new GoalProgressService(
+        goalRepository,
+        goalProgress,
+      ).get(count.id, {});
+      expect(countProgress).toMatchObject({
+        currentValue: '3',
+        achieved: true,
+      });
+      const recurring = await goalService.create({
+        ...definition,
+        scheduleMode: 'recurring',
+        recurrencePeriod: 'week',
+      });
+      const periodResponse = await app.request(
+        `/api/v1/goals/${recurring.id}/periods?limit=2`,
+      );
+      expect(periodResponse.status).toBe(200);
+      const periods = GoalPeriodsResponseSchema.parse(
+        await periodResponse.json(),
+      );
+      expect(periods.items).toHaveLength(2);
+      expect(periods.nextBefore).toBe('2000-01-23');
+      const clipped = GoalContributionsResponseSchema.parse(
+        await (
+          await app.request(
+            `/api/v1/goals/${recurring.id}/contributions?period=2000-01-01`,
+          )
+        ).json(),
+      );
+      expect(clipped.endDate).toBe('2000-01-02');
+      expect(clipped.items).toHaveLength(0);
+      expect(
+        (
+          await app.request(
+            `/api/v1/goals/${recurring.id}/contributions?period=2000-01-04`,
+          )
+        ).status,
+      ).toBe(400);
+      expect((await get('/contributions?limit=101')).status).toBe(400);
+      await goalService.archive(fixed.id);
+      await database.db
+        .update(measurementDefinitions)
+        .set({ archivedAt: new Date() })
+        .where(eq(measurementDefinitions.id, measurement.id));
+      await database.db
+        .update(activityVariants)
+        .set({ archivedAt: new Date() })
+        .where(eq(activityVariants.id, variant.id));
+      await database.db
+        .update(tags)
+        .set({ archivedAt: new Date() })
+        .where(inArray(tags.id, tagIds));
+      const archived = GoalDetailSchema.parse(
+        await (await get('/detail')).json(),
+      );
+      expect(archived.goal.isArchived).toBe(true);
+      expect(archived.archivedReferences).toContain('Distance');
+      const historical = GoalContributionsResponseSchema.parse(
+        await (await get('/contributions')).json(),
+      );
+      expect(historical.items[0]?.activity.variant?.isArchived).toBe(true);
+      expect(historical.items[2]?.displayContribution).toBe('2.500125');
+    } finally {
+      await database.db.delete(goalTags).where(inArray(goalTags.tagId, tagIds));
+      await database.db
+        .delete(activityTags)
+        .where(inArray(activityTags.tagId, tagIds));
+      await database.db.delete(tags).where(inArray(tags.id, tagIds));
+    }
   });
   it('loads compact goal overview progress without multiplying activities by required tags', async () => {
     const goalRepository = createGoalRepository(database.db);

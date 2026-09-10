@@ -278,13 +278,23 @@ Progress is calculated on demand from activities whose calendar date is within a
 
 ### Goal overview (Phase 4D)
 
-`/goals` uses `?view=upcoming|ended|archived`, with active as the default and invalid values falling back to active. Create and edit return to the saved goal's server-derived lifecycle view; cancel retains the originating view. No goal-detail route is implemented yet.
+`/goals` uses `?view=upcoming|ended|archived`, with active as the default and invalid values falling back to active. Create and overview-originated edits return to the saved goal's server-derived lifecycle view; cancel retains the originating view.
 
 `GET /api/v1/goals/overview?lifecycle=active|upcoming|ended|archived` returns shared typed definitions, reference labels, display-unit values, and compact progress. A nonempty view uses four database queries regardless of goal count: selected definitions, reference labels, existence across all views, and one grouped daily-progress batch. Required tags use match-all existence checks rather than row-multiplying joins. There is no per-row progress HTTP request or reference lookup.
 
 The overview reuses the Phase 4B calculator. Fixed values retain over-target progress. Recurring calculation consumes periods without retaining history rows, returning only the current period and completed/achieved completed-period counts. Overview summaries cover the full definition, including goals longer than the detail endpoint's 520-row response limit. Measurement display conversion uses existing exact decimal arithmetic; canonical values still drive achievement and the visual bar. Aggregate read failure returns null progress and null displayCurrent while preserving definitions and targets.
 
 Archive requires confirmation; restore returns the goal to its derived lifecycle and preserves the backend conflict message. Both operations retain the row on failure. Phase 4E must preserve independent lifecycle and achievement, clipped calendar periods, match-all tags, exact canonical values, the compact overview response, and recalculation after definition/history edits.
+
+### Goal detail and follow-up (Phase 4E)
+
+`/goals/:id?view=...&period=YYYY-MM-DD` retains the overview context and selected effective recurring-period start. Detail-originated edits return to detail and reload its definition, progress, history, and qualifying activities. Activity detail links preserve the goal return context. Archive keeps detail readable; restore conflicts retain the page and the backend explanation.
+
+Three typed reads support the page: `GET /api/v1/goals/:id/detail` reuses the overview projection with archived-reference labels, remaining display value, and a server-selected default period; `GET /api/v1/goals/:id/periods?before=...&limit=12` returns reverse-chronological period windows with `nextBefore`; and `GET /api/v1/goals/:id/contributions?period=...&limit=25&offset=0` returns qualifying activity summaries and nullable canonical/display contributions. Period pages are capped at 50, contribution pages at 100. The existing Phase 4B `/progress?from=...&to=...` contract remains available.
+
+All fixed, recurring, overview, and qualifying-activity reads share `goalQualification()` for kind, optional variant, inclusive dates, and match-all tags. A measurement left join preserves scoped activities whose measurement is missing. These have null contribution values; recorded zero is distinct. Activity summaries reuse journal mappers and batched reference/measurement hydration. PostgreSQL applies pagination with date, optional start time, creation time, and ID as stable ordering keys. Period aggregation reads only the requested date window and reuses the progress calculator.
+
+Definition/progress, history, and activities have separate retry states. Loaded rows survive pagination errors, and aborted/stale requests cannot replace the selected period. The authoritative visuals are numeric values, a slim current-result progress bar, and textual period rows. No cumulative chart or new visualization dependency was introduced.
 
 ## Database rules
 

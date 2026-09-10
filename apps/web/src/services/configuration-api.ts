@@ -14,6 +14,14 @@ import {
 import {
   GoalSchema,
   GoalOverviewResponseSchema,
+  GoalDetailSchema,
+  GoalPeriodsResponseSchema,
+  GoalContributionsResponseSchema,
+  type GoalDetail,
+  type GoalPeriodsQuery,
+  type GoalPeriodsResponse,
+  type GoalContributionsQuery,
+  type GoalContributionsResponse,
   type GoalOverviewQuery,
   type GoalOverviewResponse,
   type Goal,
@@ -60,6 +68,19 @@ export interface GoalOverviewApi {
   ): Promise<GoalOverviewResponse>;
   archiveGoal(id: string): Promise<Goal>;
   restoreGoal(id: string): Promise<Goal>;
+}
+export interface GoalDetailApi {
+  goalDetail(id: string, signal?: AbortSignal): Promise<GoalDetail>;
+  goalPeriods(
+    id: string,
+    query: GoalPeriodsQuery,
+    signal?: AbortSignal,
+  ): Promise<GoalPeriodsResponse>;
+  goalContributions(
+    id: string,
+    query: GoalContributionsQuery,
+    signal?: AbortSignal,
+  ): Promise<GoalContributionsResponse>;
 }
 export interface JournalApi {
   listActivities(
@@ -256,7 +277,8 @@ export function createConfigurationApi(
   ActivityApi &
   JournalApi &
   GoalApi &
-  GoalOverviewApi {
+  GoalOverviewApi &
+  GoalDetailApi {
   const transport =
     options.fetch ?? ((...args: Parameters<typeof fetch>) => fetch(...args));
   async function request<T>(
@@ -341,6 +363,30 @@ export function createConfigurationApi(
     `/measurement-definitions/${encodeURIComponent(id)}`;
   let units: Promise<{ items: MeasurementUnit[] }> | undefined;
   return {
+    goalDetail: (id, signal) =>
+      request(
+        `/goals/${encodeURIComponent(id)}/detail`,
+        GoalDetailSchema,
+        'GET',
+        undefined,
+        signal,
+      ),
+    goalPeriods: (id, query, signal) =>
+      request(
+        `/goals/${encodeURIComponent(id)}/periods?limit=${query.limit}${query.before ? `&before=${query.before}` : ''}`,
+        GoalPeriodsResponseSchema,
+        'GET',
+        undefined,
+        signal,
+      ),
+    goalContributions: (id, query, signal) =>
+      request(
+        `/goals/${encodeURIComponent(id)}/contributions?limit=${query.limit}&offset=${query.offset}${query.period ? `&period=${query.period}` : ''}`,
+        GoalContributionsResponseSchema,
+        'GET',
+        undefined,
+        signal,
+      ),
     overviewGoals: (query, signal) =>
       request(
         `/goals/overview?lifecycle=${query.lifecycle}`,

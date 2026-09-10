@@ -9,7 +9,17 @@ import {
   measurementUnits,
   type GoalOverviewQuery,
   type GoalOverviewResponse,
+  type GoalDetail,
+  type GoalPeriodRange,
+  type GoalPeriodsQuery,
+  type GoalPeriodsResponse,
+  type GoalContributionsQuery,
+  type GoalContributionsResponse,
 } from '@activus/contracts';
+import {
+  toActivitySummary,
+  toActivityMeasurement,
+} from '../activities/mapper.js';
 import {
   decimal as preciseDecimal,
   divideForDisplay,
@@ -45,6 +55,29 @@ function startOf(d: string, p: 'week' | 'month' | 'year') {
       ? monthStart(d)
       : yearStart(d);
 }
+function periodRange(goal: GoalRecord, date: string): GoalPeriodRange {
+  const start = startOf(date, goal.recurrencePeriod!);
+  const end = addDays(nextPeriod(start, goal.recurrencePeriod!), -1);
+  return {
+    calendarPeriodStart: start,
+    calendarPeriodEnd: end,
+    startDate: start < goal.startDate ? goal.startDate : start,
+    endDate: end > goal.endDate ? goal.endDate : end,
+  };
+}
+function displayValue(
+  value: string,
+  meta: { displayUnit: string | null; precision: number | null },
+) {
+  const unit = measurementUnits.find((u) => u.id === meta.displayUnit);
+  return unit
+    ? divideForDisplay(
+        preciseDecimal(value),
+        preciseDecimal(unit.factorToCanonical),
+        meta.precision ?? unit.defaultPrecision,
+      )
+    : value;
+}
 function decimal(v: string) {
   return BigInt(v.replace('.', ''));
 }
@@ -75,22 +108,61 @@ export class GoalProgressService {
   constructor(
     private readonly goals: GoalRepository,
     private readonly data: {
-      aggregate(goal: GoalRecord): Promise<DailyAggregate[]>;
+      aggregate(
+        goal: GoalRecord,
+        range?: { startDate: string; endDate: string },
+      ): Promise<DailyAggregate[]>;
     } & Partial<
       Pick<
         ReturnType<typeof createGoalProgressRepository>,
-        'aggregateMany' | 'overviewMetadata'
+        'aggregateMany' | 'overviewMetadata' | 'contributions'
       >
     >,
     private readonly clock: Clock = () => new Date().toISOString().slice(0, 10),
   ) {}
   async overview(query: GoalOverviewQuery): Promise<GoalOverviewResponse> {
-    if (!this.data.aggregateMany || !this.data.overviewMetadata)
-      throw new Error('Overview repository unavailable');
     const records = await this.goals.list({
       lifecycle: query.lifecycle,
       includeArchived: query.lifecycle === 'archived',
     });
+    const result = await this.project(records);
+    return {
+      ...result,
+      items: result.items.map(
+        ({ archivedReferences, displayRemaining, defaultPeriod, ...item }) => {
+          void [archivedReferences, displayRemaining, defaultPeriod];
+          return item;
+        },
+      ),
+    };
+  }
+  private async requireGoal(id: string) {
+    const goal = await this.goals.find(parseId(id, 'GOAL_INVALID'));
+    if (!goal) throw new ApiError(404, 'GOAL_NOT_FOUND', 'Goal not found');
+    return goal;
+  }
+  async detail(id: string): Promise<GoalDetail> {
+    const goal = await this.requireGoal(id);
+    return (await this.project([goal])).items[0]!;
+  }
+  private defaultPeriod(goal: GoalRecord) {
+    const today = this.clock();
+    return goal.scheduleMode === 'fixed'
+      ? null
+      : periodRange(
+          goal,
+          today < goal.startDate
+            ? goal.startDate
+            : today > goal.endDate
+              ? goal.endDate
+              : today,
+        );
+  }
+  private async project(
+    records: GoalRecord[],
+  ): Promise<{ hasGoals: boolean; items: GoalDetail[] }> {
+    if (!this.data.aggregateMany || !this.data.overviewMetadata)
+      throw new Error('Overview repository unavailable');
     const ids = records.map((g) => g.id);
     const metadata = await this.data.overviewMetadata(ids);
     let daily: Array<DailyAggregate & { goalId: string }> | null;
@@ -105,14 +177,7 @@ export class GoalProgressService {
         const meta = metadata.rows.find((m) => m.id === record.id);
         if (!meta) throw new Error('Goal references unavailable');
         const unit = measurementUnits.find((u) => u.id === meta.displayUnit);
-        const display = (value: string) =>
-          unit
-            ? divideForDisplay(
-                preciseDecimal(value),
-                preciseDecimal(unit.factorToCanonical),
-                meta.precision ?? unit.defaultPrecision,
-              )
-            : value;
+        const display = (value: string) => displayValue(value, meta);
         const completed = {
           count: 0,
           achieved: 0,
@@ -152,6 +217,14 @@ export class GoalProgressService {
             ? progress.currentValue
             : progress?.currentPeriod?.currentValue;
         return {
+          archivedReferences: meta.archivedReferences ?? [],
+          defaultPeriod: this.defaultPeriod(record),
+          displayRemaining:
+            progress?.scheduleMode === 'fixed'
+              ? display(progress.remainingValue)
+              : progress?.currentPeriod
+                ? display(progress.currentPeriod.remainingValue)
+                : null,
           goal: toGoal(record),
           kindName: meta.kindName,
           iconName: meta.iconName,
@@ -164,6 +237,131 @@ export class GoalProgressService {
           progress,
         };
       }),
+    };
+  }
+  async periods(
+    id: string,
+    query: GoalPeriodsQuery,
+  ): Promise<GoalPeriodsResponse> {
+    const goal = await this.requireGoal(id);
+    if (goal.scheduleMode !== 'recurring')
+      throw new ApiError(
+        400,
+        'GOAL_PROGRESS_INVALID',
+        'This goal has no recurring periods',
+      );
+    if (
+      query.before &&
+      (query.before < goal.startDate || query.before > goal.endDate)
+    )
+      throw new ApiError(
+        400,
+        'GOAL_PROGRESS_INVALID',
+        'Period window is outside the goal',
+      );
+    const ranges: GoalPeriodRange[] = [];
+    let date = query.before ?? goal.endDate;
+    while (date >= goal.startDate && ranges.length < query.limit) {
+      const period = periodRange(goal, date);
+      ranges.push(period);
+      if (period.startDate === goal.startDate) break;
+      date = addDays(period.startDate, -1);
+    }
+    const last = ranges.at(-1)!;
+    const [daily, metadata] = await Promise.all([
+      this.data.aggregate(goal, {
+        startDate: last.startDate,
+        endDate: ranges[0]!.endDate,
+      }),
+      this.data.overviewMetadata!([goal.id]),
+    ]);
+    const result = this.calculate(goal, daily, {
+      from: last.startDate,
+      to: ranges[0]!.endDate,
+    });
+    const meta = metadata.rows[0]!;
+    return {
+      items:
+        result.scheduleMode === 'recurring'
+          ? result.periods.reverse().map((p) => ({
+              ...p,
+              displayCurrent: displayValue(p.currentValue, meta),
+              displayTarget: displayValue(p.targetValue, meta),
+              displayRemaining: displayValue(p.remainingValue, meta),
+            }))
+          : [],
+      nextBefore:
+        last.startDate > goal.startDate ? addDays(last.startDate, -1) : null,
+    };
+  }
+  async contributions(
+    id: string,
+    query: GoalContributionsQuery,
+  ): Promise<GoalContributionsResponse> {
+    const goal = await this.requireGoal(id);
+    let range = { startDate: goal.startDate, endDate: goal.endDate };
+    if (goal.scheduleMode === 'recurring') {
+      const selected = query.period ?? this.defaultPeriod(goal)!.startDate;
+      if (
+        selected < goal.startDate ||
+        selected > goal.endDate ||
+        periodRange(goal, selected).startDate !== selected
+      )
+        throw new ApiError(
+          400,
+          'GOAL_PROGRESS_INVALID',
+          'Choose an effective goal period start',
+        );
+      range = periodRange(goal, selected);
+    } else if (query.period)
+      throw new ApiError(
+        400,
+        'GOAL_PROGRESS_INVALID',
+        'Fixed goals use the complete date range',
+      );
+    if (!this.data.contributions)
+      throw new Error('Contributions repository unavailable');
+    const rows = await this.data.contributions(
+      goal,
+      range.startDate,
+      range.endDate,
+      query.limit,
+      query.offset,
+    );
+    const hasMore = rows.length > query.limit;
+    return {
+      startDate: range.startDate,
+      endDate: range.endDate,
+      items: rows.slice(0, query.limit).map((row) => {
+        const measurement = row.measurements.find(
+          (m) => m.definition.id === goal.measurementDefinitionId,
+        );
+        const canonical =
+          goal.targetType === 'activity_count'
+            ? '1'
+            : goal.targetType === 'total_duration'
+              ? row.activity.durationSeconds === null
+                ? null
+                : String(row.activity.durationSeconds)
+              : measurement
+                ? String(toActivityMeasurement(measurement).canonicalValue)
+                : null;
+        const display =
+          goal.targetType === 'measurement_total' && measurement
+            ? String(toActivityMeasurement(measurement).displayValue)
+            : canonical;
+        return {
+          activity: toActivitySummary(row),
+          canonicalContribution: canonical,
+          displayContribution: display,
+        };
+      }),
+      pagination: {
+        limit: query.limit,
+        offset: query.offset,
+        hasMore,
+        nextOffset: hasMore ? query.offset + query.limit : null,
+      },
     };
   }
   async get(id: string, input: unknown): Promise<GoalProgress> {
@@ -215,7 +413,10 @@ export class GoalProgressService {
       };
     }
     const p = goal.recurrencePeriod!;
-    const first = startOf(goal.startDate, p),
+    const first = startOf(
+        query.from && query.from > goal.startDate ? query.from : goal.startDate,
+        p,
+      ),
       periods: Array<{
         calendarPeriodStart: string;
         calendarPeriodEnd: string;
@@ -230,7 +431,11 @@ export class GoalProgressService {
     let cursor = first;
     // Overview consumes each period without retaining or returning history. The
     // detail endpoint keeps its established 520-row bound.
-    while (cursor <= goal.endDate && (onPeriod || periods.length < 520)) {
+    while (
+      cursor <= goal.endDate &&
+      (!query.to || cursor <= query.to) &&
+      (onPeriod || periods.length < 520)
+    ) {
       const fullEnd = addDays(nextPeriod(cursor, p), -1),
         start = cursor < goal.startDate ? goal.startDate : cursor,
         end = fullEnd > goal.endDate ? goal.endDate : fullEnd;

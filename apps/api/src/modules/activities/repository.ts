@@ -20,7 +20,7 @@ const selection = {
   kind: activityKinds,
   variant: activityVariants,
 };
-async function withMeasurements(
+export async function withMeasurements(
   db: Connection,
   rows: Omit<ActivityBundle, 'measurements' | 'tags'>[],
 ): Promise<ActivityBundle[]> {

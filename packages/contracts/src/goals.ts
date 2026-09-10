@@ -1,5 +1,9 @@
 import { z } from 'zod';
 import { TagIdSchema } from './tags.js';
+import {
+  ActivitySummarySchema,
+  ActivityPaginationSchema,
+} from './activities.js';
 
 export const GoalIdSchema = z.uuid().transform((v) => v.toLowerCase());
 export const GoalTargetTypeSchema = z.enum([
@@ -187,3 +191,62 @@ export const GoalOverviewResponseSchema = z.strictObject({
 export type GoalOverviewQuery = z.infer<typeof GoalOverviewQuerySchema>;
 export type GoalOverviewItem = z.infer<typeof GoalOverviewItemSchema>;
 export type GoalOverviewResponse = z.infer<typeof GoalOverviewResponseSchema>;
+
+export const GoalPeriodRangeSchema = RecurringGoalPeriodSchema.pick({
+  startDate: true,
+  endDate: true,
+  calendarPeriodStart: true,
+  calendarPeriodEnd: true,
+});
+export const GoalDetailSchema = GoalOverviewItemSchema.extend({
+  archivedReferences: z.array(z.string()),
+  displayRemaining: z.string().nullable(),
+  defaultPeriod: GoalPeriodRangeSchema.nullable(),
+});
+const boundedInteger = (max: number) =>
+  z
+    .string()
+    .regex(/^(0|[1-9]\d*)$/)
+    .transform(Number)
+    .pipe(z.number().int().min(0).max(max));
+export const GoalPeriodsQuerySchema = z.strictObject({
+  before: DateSchema.optional(),
+  limit: boundedInteger(50).pipe(z.number().min(1)).default(12),
+});
+export const GoalPeriodsResponseSchema = z.strictObject({
+  items: z.array(
+    RecurringGoalPeriodSchema.extend({
+      displayCurrent: z.string(),
+      displayTarget: z.string(),
+      displayRemaining: z.string(),
+    }),
+  ),
+  nextBefore: DateSchema.nullable(),
+});
+export const GoalContributionsQuerySchema = z.strictObject({
+  period: DateSchema.optional(),
+  limit: boundedInteger(100).pipe(z.number().min(1)).default(25),
+  offset: boundedInteger(1000000).default(0),
+});
+export const GoalContributionsResponseSchema = z.strictObject({
+  startDate: DateSchema,
+  endDate: DateSchema,
+  items: z.array(
+    z.strictObject({
+      activity: ActivitySummarySchema,
+      canonicalContribution: z.string().nullable(),
+      displayContribution: z.string().nullable(),
+    }),
+  ),
+  pagination: ActivityPaginationSchema,
+});
+export type GoalDetail = z.infer<typeof GoalDetailSchema>;
+export type GoalPeriodRange = z.infer<typeof GoalPeriodRangeSchema>;
+export type GoalPeriodsQuery = z.infer<typeof GoalPeriodsQuerySchema>;
+export type GoalPeriodsResponse = z.infer<typeof GoalPeriodsResponseSchema>;
+export type GoalContributionsQuery = z.infer<
+  typeof GoalContributionsQuerySchema
+>;
+export type GoalContributionsResponse = z.infer<
+  typeof GoalContributionsResponseSchema
+>;
