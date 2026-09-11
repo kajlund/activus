@@ -47,6 +47,7 @@ import {
   GoalContributionsResponseSchema,
   GoalDetailSchema,
   GoalPeriodsResponseSchema,
+  ActivityGoalsResponseSchema,
 } from '@activus/contracts';
 loadRootEnv();
 const env = parseEnv(process.env);
@@ -314,6 +315,272 @@ describe.skipIf(!safe)('PostgreSQL activities and typed measurements', () => {
       await database.db.delete(tags).where(inArray(tags.id, tagIds));
     }
   });
+  it('recalculates goal journeys after activity and definition changes and links only current matches', async () => {
+    const outdoor = await variants.create(kindId, {
+      ...validVariant,
+      name: 'Outdoor',
+    });
+    const treadmill = await variants.create(kindId, {
+      ...validVariant,
+      name: 'Treadmill',
+      isDefault: false,
+    });
+    const measurement = await definitions.create(kindId, validMeasurement);
+    const tagRows = await database.db
+      .insert(tags)
+      .values([
+        { name: randomUUID(), color: '#67318F' },
+        { name: randomUUID(), color: '#67318F' },
+      ])
+      .returning();
+    const tagIds = tagRows.map((t) => t.id);
+    const repo = createGoalRepository(database.db);
+    const goalService = new GoalService(repo, () => '2000-01-10');
+    const data = createGoalProgressRepository(database.db);
+    const progress = new GoalProgressService(repo, data, () => '2000-01-10');
+    const app = createApp(env, pino({ level: 'silent' }), {
+      goals: repo,
+      goalProgress: data,
+    });
+    const base = {
+      name: 'Weekly treadmill walks',
+      activityKindId: kindId,
+      activityVariantId: treadmill.id,
+      tagIds,
+      targetType: 'activity_count',
+      targetValue: 2,
+      scheduleMode: 'recurring',
+      recurrencePeriod: 'week',
+      startDate: '2000-01-01',
+      endDate: '2000-01-31',
+    };
+    try {
+      const weekly = await goalService.create(base);
+      const fixed = await goalService.create({
+        ...base,
+        name: 'Outdoor distance',
+        activityVariantId: outdoor.id,
+        tagIds: [],
+        scheduleMode: 'fixed',
+        recurrencePeriod: null,
+        targetType: 'measurement_total',
+        targetValue: '5000',
+        measurementDefinitionId: measurement.id,
+      });
+      const durationGoal = await goalService.create({
+        ...base,
+        name: 'Walking duration',
+        activityVariantId: null,
+        tagIds: [],
+        scheduleMode: 'fixed',
+        recurrencePeriod: null,
+        targetType: 'total_duration',
+        targetValue: 100,
+      });
+      const unrelated = await goalService.create({
+        ...base,
+        name: 'Other kind',
+        activityKindId: await newKind(),
+        activityVariantId: null,
+        tagIds: [],
+      });
+      const value = async (id: string) => (await progress.detail(id)).progress;
+      const matches = async (id: string, query = '') => {
+        const response = await app.request(
+          `/api/v1/goals/for-activity/${id}${query}`,
+        );
+        expect(response.status).toBe(200);
+        return ActivityGoalsResponseSchema.parse(await response.json());
+      };
+      expect(await value(fixed.id)).toMatchObject({ currentValue: '0' });
+      const a = await create({
+        activityVariantId: outdoor.id,
+        activityDate: '2000-01-03',
+        durationSeconds: 60,
+        measurements: [
+          {
+            measurementDefinitionId: measurement.id,
+            valueType: 'decimal',
+            value: '2.5',
+            unitId: 'kilometre',
+          },
+        ],
+      });
+      expect(await value(fixed.id)).toMatchObject({ currentValue: '2500' });
+      const renamed = await goalService.update(fixed.id, {
+        name: 'Renamed outdoor distance',
+      });
+      expect(renamed).toMatchObject({
+        activityVariantId: outdoor.id,
+        measurementDefinitionId: measurement.id,
+      });
+      expect(await value(fixed.id)).toMatchObject({ currentValue: '2500' });
+      expect((await matches(a.id)).items.map((g) => g.id).sort()).toEqual(
+        [fixed.id, durationGoal.id].sort(),
+      );
+      await service.update(a.id, {
+        durationSeconds: 90,
+        measurements: [
+          {
+            measurementDefinitionId: measurement.id,
+            valueType: 'decimal',
+            value: '3',
+            unitId: 'kilometre',
+          },
+        ],
+      });
+      expect(await value(fixed.id)).toMatchObject({ currentValue: '3000' });
+      expect(await value(durationGoal.id)).toMatchObject({
+        currentValue: '90',
+      });
+      await service.update(a.id, {
+        activityVariantId: treadmill.id,
+        tagIds: tagIds.slice(0, 1),
+        measurements: [],
+      });
+      expect(await value(fixed.id)).toMatchObject({ currentValue: '0' });
+      expect((await matches(a.id)).items.map((g) => g.id)).toEqual([
+        durationGoal.id,
+      ]);
+      await service.update(a.id, { tagIds });
+      expect(
+        (await matches(a.id)).items.find((g) => g.id === weekly.id)?.period,
+      ).toMatchObject({ startDate: '2000-01-03', endDate: '2000-01-09' });
+      const first = await matches(a.id, '?limit=1');
+      const second = await matches(a.id, '?limit=1&offset=1');
+      expect(first.pagination.hasMore).toBe(true);
+      expect(
+        new Set([...first.items, ...second.items].map((g) => g.id)).size,
+      ).toBe(2);
+      await service.update(a.id, { activityDate: '2000-01-10' });
+      const periods = await progress.periods(weekly.id, { limit: 12 });
+      expect(
+        periods.items.find((p) => p.startDate === '2000-01-03')?.currentValue,
+      ).toBe('0');
+      expect(
+        periods.items.find((p) => p.startDate === '2000-01-10')?.currentValue,
+      ).toBe('1');
+      expect(
+        (
+          await progress.contributions(weekly.id, {
+            period: '2000-01-03',
+            limit: 25,
+            offset: 0,
+          })
+        ).items,
+      ).toHaveLength(0);
+      expect(
+        (
+          await progress.contributions(weekly.id, {
+            period: '2000-01-10',
+            limit: 25,
+            offset: 0,
+          })
+        ).items,
+      ).toHaveLength(1);
+      await goalService.update(weekly.id, {
+        name: 'Updated label',
+        targetValue: 1,
+      });
+      expect((await progress.detail(weekly.id)).progress).toMatchObject({
+        currentPeriod: {
+          currentValue: '1',
+          achieved: true,
+          remainingValue: '0',
+        },
+      });
+      await goalService.update(weekly.id, { startDate: '2000-01-11' });
+      expect((await matches(a.id)).items.map((g) => g.id)).toEqual([
+        durationGoal.id,
+      ]);
+      await goalService.update(weekly.id, { startDate: '2000-01-01' });
+      await goalService.archive(weekly.id);
+      expect((await matches(a.id)).items.map((g) => g.id)).toEqual([
+        durationGoal.id,
+      ]);
+      expect(
+        (
+          await repo.list(
+            { lifecycle: 'active', includeArchived: true },
+            '2000-01-10',
+          )
+        ).some((g) => g.id === weekly.id),
+      ).toBe(false);
+      expect((await goalService.restore(weekly.id)).lifecycle).toBe('active');
+      await service.update(a.id, { activityDate: '1999-12-31' });
+      expect((await matches(a.id)).items).toHaveLength(0);
+      await service.update(a.id, { activityDate: '2000-01-31' });
+      expect(
+        (await matches(a.id)).items.find((g) => g.id === weekly.id)?.period,
+      ).toMatchObject({ startDate: '2000-01-31', endDate: '2000-01-31' });
+      await service.update(a.id, {
+        activityKindId: unrelated.activityKindId,
+        activityVariantId: null,
+        measurements: [],
+      });
+      expect((await matches(a.id)).items.map((g) => g.id)).toEqual([
+        unrelated.id,
+      ]);
+      await service.update(a.id, {
+        activityKindId: kindId,
+        activityVariantId: treadmill.id,
+        measurements: [],
+      });
+      expect(await progress.get(unrelated.id, {})).toMatchObject({
+        periods: expect.arrayContaining([
+          expect.objectContaining({
+            startDate: '2000-01-31',
+            currentValue: '0',
+          }),
+        ]),
+      });
+      await database.db
+        .update(activityKinds)
+        .set({ archivedAt: new Date() })
+        .where(eq(activityKinds.id, kindId));
+      await database.db
+        .update(activityVariants)
+        .set({ archivedAt: new Date() })
+        .where(eq(activityVariants.id, treadmill.id));
+      await database.db
+        .update(tags)
+        .set({ archivedAt: new Date() })
+        .where(inArray(tags.id, tagIds));
+      expect((await matches(a.id)).items.map((g) => g.id).sort()).toEqual(
+        [weekly.id, durationGoal.id].sort(),
+      );
+      const historical = await progress.detail(weekly.id);
+      expect(historical.archivedReferences).toContain('Treadmill');
+      expect(
+        (await progress.periods(weekly.id, { limit: 12 })).items[0]
+          ?.currentValue,
+      ).toBe('1');
+      await goalService.update(weekly.id, { name: 'Historical walking' });
+      await goalService.archive(weekly.id);
+      await expect(goalService.restore(weekly.id)).rejects.toMatchObject({
+        code: 'GOAL_RESTORE_BLOCKED',
+        message: 'Activity kind is archived',
+      });
+      await service.delete(a.id);
+      expect(await value(durationGoal.id)).toMatchObject({ currentValue: '0' });
+      expect(
+        (await app.request(`/api/v1/goals/for-activity/${a.id}`)).status,
+      ).toBe(404);
+      expect(
+        (await app.request('/api/v1/goals/for-activity/invalid')).status,
+      ).toBe(400);
+      expect(
+        (await app.request(`/api/v1/goals/for-activity/${a.id}?limit=51`))
+          .status,
+      ).toBe(400);
+    } finally {
+      await database.db.delete(goalTags).where(inArray(goalTags.tagId, tagIds));
+      await database.db
+        .delete(activityTags)
+        .where(inArray(activityTags.tagId, tagIds));
+      await database.db.delete(tags).where(inArray(tags.id, tagIds));
+    }
+  });
   it('loads compact goal overview progress without multiplying activities by required tags', async () => {
     const goalRepository = createGoalRepository(database.db);
     const goalService = new GoalService(goalRepository);
@@ -427,7 +694,7 @@ describe.skipIf(!safe)('PostgreSQL activities and typed measurements', () => {
       schema,
       logger: {
         logQuery(query, params) {
-          if (query.startsWith('select ')) queries.push({ query, params });
+          if (/^select /i.test(query)) queries.push({ query, params });
         },
       },
     });
@@ -470,12 +737,81 @@ describe.skipIf(!safe)('PostgreSQL activities and typed measurements', () => {
     queries.length = 0;
     await measured.find(item[0]!.activity.id);
     expect(queries).toHaveLength(3);
+    const goalRepository = createGoalRepository(observed);
+    const goalService = new GoalService(goalRepository);
+    const fixed = await goalService.create({
+      name: 'Plan review',
+      activityKindId: kindId,
+      activityVariantId: variant.id,
+      targetType: 'activity_count',
+      targetValue: 10,
+      scheduleMode: 'fixed',
+      startDate: '2010-01-01',
+      endDate: '2026-12-31',
+    });
+    const recurring = await goalService.create({
+      name: 'Period plan review',
+      activityKindId: kindId,
+      activityVariantId: variant.id,
+      targetType: 'activity_count',
+      targetValue: 3,
+      scheduleMode: 'recurring',
+      recurrencePeriod: 'week',
+      startDate: '2010-01-01',
+      endDate: '2026-12-31',
+    });
+    const progressRepository = createGoalProgressRepository(observed);
+    const progressService = new GoalProgressService(
+      goalRepository,
+      progressRepository,
+      () => '2026-09-11',
+    );
+    const goalPlans = [];
+    for (const [name, run] of [
+      ['overview', () => progressService.overview({ lifecycle: 'active' })],
+      ['fixed-progress', () => progressService.get(fixed.id, {})],
+      ['periods', () => progressService.periods(recurring.id, { limit: 12 })],
+      [
+        'contributions',
+        () => progressService.contributions(fixed.id, { limit: 25, offset: 0 }),
+      ],
+      [
+        'matching-activity',
+        () =>
+          progressService.matchingActivity(item[0]!.activity.id, {
+            limit: 25,
+            offset: 0,
+          }),
+      ],
+    ] as const) {
+      queries.length = 0;
+      await run();
+      const captured = [...queries];
+      const explained = [];
+      for (const q of captured) {
+        const plan = await database.db.$client.query(
+          `EXPLAIN (ANALYZE, BUFFERS, FORMAT JSON) ${q.query}`,
+          q.params,
+        );
+        explained.push(plan.rows[0]);
+      }
+      goalPlans.push({ name, selectCount: captured.length, plans: explained });
+    }
+    const goalFolder = new URL(
+      '../../../../.artifacts/phase-4f/',
+      import.meta.url,
+    );
+    await mkdir(goalFolder, { recursive: true });
+    await writeFile(
+      new URL('goal-query-plans.json', goalFolder),
+      JSON.stringify({ fixtureActivities: 10000, goalPlans }, null, 2),
+    );
     const folder = new URL('../../../../.artifacts/phase-3f/', import.meta.url);
     await mkdir(folder, { recursive: true });
     await writeFile(
       new URL('journal-query-plans.json', folder),
       JSON.stringify(
-        { fixtureActivities: 10000, detailSelectCount: queries.length, plans },
+        { fixtureActivities: 10000, detailSelectCount: 3, plans },
         null,
         2,
       ),

@@ -30,4 +30,4 @@ Partial failures retain readable goal information and previously loaded rows. Ch
 
 ## Preserve in Phase 4F
 
-Keep lifecycle separate from achievement; reuse the shared qualification predicate and exact backend calculator; preserve clipped period identities, bounded query/response sizes, missing-versus-zero semantics, archived references, URL return context, and independent retry/stale-response handling. Phase 4F has not been started.
+Keep lifecycle separate from achievement; reuse the shared qualification predicate and exact backend calculator; preserve clipped period identities, bounded query/response sizes, missing-versus-zero semantics, archived references, URL return context, and independent retry/stale-response handling. See [Phase 4F integration report](phase-4f-goals-integration-report.md) for subsequent implementation and verification limits.

@@ -56,6 +56,62 @@ async function detail(id = f.activities[0]!.id, back = '/activities') {
   return el;
 }
 const text = (el: LitElement) => el.shadowRoot!.textContent ?? '';
+it('links matching goals to the activity period and reloads after browser document restoration', async () => {
+  const activityGoals = vi.fn().mockResolvedValue({
+    items: [
+      {
+        id: '11111111-1111-4111-8111-111111111111',
+        name: 'Weekly walks',
+        lifecycle: 'ended',
+        scheduleMode: 'recurring',
+        recurrencePeriod: 'week',
+        startDate: '2026-01-01',
+        endDate: '2026-09-07',
+        period: { startDate: '2026-09-07', endDate: '2026-09-07' },
+      },
+    ],
+    pagination: { limit: 25, offset: 0, hasMore: false, nextOffset: null },
+  });
+  const el = new ActivityDetailPage();
+  el.route = `/activities/${f.activities[0]!.id}`;
+  el.api = { ...f.api, activityGoals };
+  document.body.append(el);
+  await settle(el);
+  const link =
+    el.shadowRoot!.querySelector<HTMLAnchorElement>('.matching-goal')!;
+  expect(link.textContent).toBe('Weekly walks');
+  expect(link.getAttribute('href')).toBe(
+    '/goals/11111111-1111-4111-8111-111111111111?view=ended&period=2026-09-07',
+  );
+  window.dispatchEvent(
+    new PageTransitionEvent('pageshow', { persisted: true }),
+  );
+  await settle(el);
+  expect(activityGoals).toHaveBeenCalledTimes(2);
+});
+it('keeps activity detail available when matching goals fail and offers an independent retry', async () => {
+  const activityGoals = vi
+    .fn()
+    .mockRejectedValueOnce(new Error('Unavailable'))
+    .mockResolvedValue({
+      items: [],
+      pagination: { limit: 25, offset: 0, hasMore: false, nextOffset: null },
+    });
+  const el = new ActivityDetailPage();
+  el.route = `/activities/${f.activities[0]!.id}`;
+  el.api = { ...f.api, activityGoals };
+  document.body.append(el);
+  await settle(el);
+  expect(text(el)).toContain('Entry 01');
+  expect(text(el)).toContain('Matching goals unavailable');
+  expect(el.shadowRoot!.querySelector('a.primary')?.textContent).toContain(
+    'Edit activity',
+  );
+  button(el, 'Retry goals').click();
+  await settle(el);
+  expect(activityGoals).toHaveBeenCalledTimes(2);
+  expect(text(el)).not.toContain('Matching goals unavailable');
+});
 function button(el: LitElement, label: string) {
   return [...el.shadowRoot!.querySelectorAll('button')].find(
     (b) => b.textContent?.trim() === label,

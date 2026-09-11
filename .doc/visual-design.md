@@ -347,19 +347,21 @@ Store numeric values in canonical units and convert for display. Never store for
 
 ## Goals
 
-A goal combines scope, measurement, target, and explicit start/end dates. Initial goal types:
+A goal combines scope, target, and inclusive start/end dates. Phase 4 supports:
 
 1. Cumulative measurement during a period
 2. Matching activity count during a period
-3. A single activity meeting one measurement target
+3. Total recorded duration
 
-Goal scope may be all activities, one activity kind, or one variant. Tag-scoped and recurring goals are deferred until demonstrated needs justify their complexity. Date shortcuts may populate the form, but stored goals always contain explicit dates.
+Goal scope requires one activity kind, with an optional exact variant and match-all required tags. Fixed goals apply one target across the range. Recurring goals apply the target to each ISO Monday-start week, calendar month or calendar year, clipping first and last periods to the goal dates.
 
-Goal status is derived: upcoming, active, reached, ended, or archived. Progress is calculated from activities rather than stored as mutable state. Correcting history therefore recalculates affected goals.
+Lifecycle is upcoming, active, ended or archived; achievement remains a separate fact. Lifecycle uses the UTC calendar date. Progress is calculated from activities rather than stored as mutable state. Correcting history therefore recalculates affected goals.
 
-Show name, scope, current and target values, progress, dates, time remaining, and final result. The progress bar visually stops at 100 percent while the value may exceed the target. A period marker may compare elapsed time with completion, but avoid labels such as `behind` or `off track`.
+Show name, scope, current and target values, remaining amount, progress and dates. The accessible progress bar visually stops at 100 percent while the value may exceed the target. Recurring detail uses textual period rows and a qualifying-activity list. Avoid forecasts or labels such as `behind` or `off track`.
 
-Once matching activities exist, lock scope, measurement, aggregation, and start date. Changing the target or end date requires clear confirmation. Name and visual presentation remain freely editable.
+Non-archived goals remain editable. Material scope, target or schedule changes require recalculation confirmation; equivalent values and name/description-only changes do not. Archived references keep their real labels and are not offered as new selections. Archive preserves readable history; restore conflicts explain the unavailable reference.
+
+Activity detail includes a compact **Counts toward goals** section with linked names and schedule/date context, selecting the activity's recurring period. Empty results omit the section. A secondary read failure leaves activity content available with a small retry. **Refresh goal** refreshes all derived detail sections; returning from edit or browser document restoration also obtains current data. Existing theme tokens, focus styles and native links/buttons are reused.
 
 ## Progress
 

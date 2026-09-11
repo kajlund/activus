@@ -1,11 +1,24 @@
 import { randomUUID } from 'node:crypto';
 import { expect, it, vi } from 'vitest';
 import { Hono } from 'hono';
-import { GoalOverviewResponseSchema } from '@activus/contracts';
+import {
+  GoalOverviewResponseSchema,
+  UpdateGoalRequestSchema,
+} from '@activus/contracts';
 import type { GoalRecord, GoalRepository } from '../src/modules/goals/model.js';
 import { GoalService } from '../src/modules/goals/service.js';
 import { GoalProgressService } from '../src/modules/goals/progress-service.js';
 import { goalRoutes } from '../src/modules/goals/routes.js';
+
+it('does not apply creation defaults to partial goal edits', () => {
+  expect(UpdateGoalRequestSchema.parse({ name: 'Renamed' })).toEqual({
+    name: 'Renamed',
+  });
+  expect(UpdateGoalRequestSchema.safeParse({}).success).toBe(false);
+  expect(
+    UpdateGoalRequestSchema.parse({ activityVariantId: null, tagIds: [] }),
+  ).toEqual({ activityVariantId: null, tagIds: [] });
+});
 
 it('returns unique definitions and compact fixed/recurring summaries using one aggregate batch', async () => {
   const fixed: GoalRecord = {
@@ -86,11 +99,22 @@ it('returns unique definitions and compact fixed/recurring summaries using one a
     completedPeriodsAchieved: 1,
   });
   expect(body.items[1]?.progress).not.toHaveProperty('periods');
+  expect(
+    body.items.every(
+      (item) =>
+        item.goal.lifecycle === 'active' &&
+        item.progress?.lifecycle === 'active',
+    ),
+  ).toBe(true);
   expect(data.aggregateMany).toHaveBeenCalledExactlyOnceWith([
     fixed.id,
     recurring.id,
   ]);
   expect(data.aggregate).not.toHaveBeenCalled();
+  expect(repository.list).toHaveBeenCalledWith(
+    { lifecycle: 'active', includeArchived: false },
+    '2026-09-10',
+  );
   expect(repository.find).not.toHaveBeenCalled();
   data.aggregateMany.mockRejectedValueOnce(new Error('unavailable'));
   const unavailable = GoalOverviewResponseSchema.parse(
@@ -110,4 +134,18 @@ it('returns unique definitions and compact fixed/recurring summaries using one a
     expect(summary.completedPeriods).toBeGreaterThan(520);
   }
   expect((await app.request(`/goals/${fixed.id}`)).status).toBe(200);
+  for (const [today, lifecycle] of [
+    ['2026-08-31', 'upcoming'],
+    ['2026-09-01', 'active'],
+    ['2026-09-30', 'active'],
+    ['2026-10-01', 'ended'],
+  ] as const) {
+    const detail = await new GoalProgressService(
+      repository,
+      data,
+      () => today,
+    ).detail(fixed.id);
+    expect(detail.goal.lifecycle).toBe(lifecycle);
+    expect(detail.progress?.lifecycle).toBe(lifecycle);
+  }
 });

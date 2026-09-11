@@ -1,12 +1,14 @@
 import { LitElement, html, css, nothing, type PropertyValues } from 'lit';
-import type { Activity } from '@activus/contracts';
+import type { Activity, ActivityGoalsResponse } from '@activus/contracts';
 import {
   configurationApi,
   ClientError,
   type ActivityApi,
   type JournalApi,
+  type ActivityGoalsApi,
 } from '../../services/configuration-api.js';
 import { navigate } from '../../routes/navigation.js';
+import { onRestoredPage } from '../../routes/restored-page.js';
 import { activityIcon } from '../activity-kinds/icons.js';
 import { journalStyles } from './styles.js';
 import {
@@ -18,6 +20,7 @@ import {
 import { tagsView, referenceText, readError } from './presentation.js';
 import { safeReturn, withReturn, withNotice } from './state.js';
 import './delete-dialog.js';
+import { goalDetailPath } from '../goals/state.js';
 export class ActivityDetailPage extends LitElement {
   static override properties = {
     route: { type: String },
@@ -26,15 +29,29 @@ export class ActivityDetailPage extends LitElement {
     loading: { state: true },
     error: { state: true },
     deleting: { state: true },
+    goals: { state: true },
+    goalsLoading: { state: true },
+    goalsError: { state: true },
   };
   route = location.pathname + location.search;
-  api: Pick<ActivityApi, 'getActivity'> & JournalApi = configurationApi;
+  api: Pick<ActivityApi, 'getActivity'> &
+    JournalApi &
+    Partial<ActivityGoalsApi> = configurationApi;
+  private goals: ActivityGoalsResponse | undefined;
+  private goalsLoading = false;
+  private goalsError: unknown;
+  private goalsController: AbortController | undefined;
   private activity: Activity | undefined;
   private loading = true;
   private error: unknown;
   private deleting = false;
   private generation = 0;
   private controller: AbortController | undefined;
+  private stopRestoredPage: (() => void) | undefined;
+  override connectedCallback() {
+    super.connectedCallback();
+    this.stopRestoredPage = onRestoredPage(() => void this.load());
+  }
   private get url() {
     return new URL(this.route, location.origin);
   }
@@ -49,11 +66,16 @@ export class ActivityDetailPage extends LitElement {
     if (changed.has('route') || changed.has('api')) void this.load();
   }
   override disconnectedCallback() {
+    this.stopRestoredPage?.();
     this.controller?.abort();
+    this.goalsController?.abort();
     this.generation++;
     super.disconnectedCallback();
   }
   async load() {
+    this.goalsController?.abort();
+    this.goals = undefined;
+    this.goalsError = undefined;
     this.controller?.abort();
     const controller = (this.controller = new AbortController());
     const generation = ++this.generation;
@@ -66,13 +88,82 @@ export class ActivityDetailPage extends LitElement {
         this.url.pathname.split('/')[2] ?? '',
         controller.signal,
       );
-      if (generation === this.generation) this.activity = activity;
+      if (generation === this.generation) {
+        this.activity = activity;
+        void this.loadGoals();
+      }
     } catch (error) {
       if (generation === this.generation && !controller.signal.aborted)
         this.error = error;
     } finally {
       if (generation === this.generation) this.loading = false;
     }
+  }
+  private async loadGoals(more = false) {
+    if (!this.activity || !this.api.activityGoals) return;
+    const offset = more ? this.goals?.pagination.nextOffset : 0;
+    if (offset == null) return;
+    this.goalsController?.abort();
+    const controller = (this.goalsController = new AbortController());
+    this.goalsLoading = true;
+    this.goalsError = undefined;
+    const trigger = this.shadowRoot?.activeElement;
+    const previousCount = this.goals?.items.length ?? 0;
+    try {
+      const result = await this.api.activityGoals(
+        this.activity.id,
+        { limit: 25, offset },
+        controller.signal,
+      );
+      if (controller.signal.aborted) return;
+      this.goals =
+        more && this.goals
+          ? { ...result, items: [...this.goals.items, ...result.items] }
+          : result;
+      await this.updateComplete;
+      if (more && !result.pagination.hasMore && trigger && !trigger.isConnected)
+        this.renderRoot
+          .querySelectorAll<HTMLAnchorElement>('.matching-goal')
+          [previousCount]?.focus();
+    } catch (error) {
+      if (!controller.signal.aborted) this.goalsError = error;
+    } finally {
+      if (!controller.signal.aborted) this.goalsLoading = false;
+    }
+  }
+  private matchingGoals() {
+    if (!this.goals?.items.length && !this.goalsLoading && !this.goalsError)
+      return nothing;
+    return html`<section aria-labelledby="matching-goals">
+      <h2 id="matching-goals">Counts toward goals</h2>
+      ${this.goals?.items.map(
+        (goal) =>
+          html`<div>
+            <a
+              class="matching-goal"
+              href=${goalDetailPath(goal.id, goal.lifecycle, goal.period?.startDate)}
+              >${goal.name}</a
+            >
+            <p class="muted">
+              ${goal.scheduleMode === 'recurring' ? `Every ${goal.recurrencePeriod}` : 'Fixed goal'}
+              · ${journalDate(goal.period?.startDate ?? goal.startDate)} –
+              ${journalDate(goal.period?.endDate ?? goal.endDate)}
+            </p>
+          </div>`,
+      )}
+      ${this.goalsLoading ? html`<p role="status">Loading goals…</p>` : nothing}
+      ${
+        this.goalsError
+          ? html`<p role="status">Matching goals unavailable.</p>
+              <button
+                @click=${() => this.loadGoals(!!this.goals?.items.length)}
+              >
+                Retry goals
+              </button>`
+          : nothing
+      }
+      ${this.goals?.pagination.hasMore && !this.goalsError ? html`<button ?disabled=${this.goalsLoading} @click=${() => this.loadGoals(true)}>Load more goals</button>` : nothing}
+    </section>`;
   }
   override render() {
     const a = this.activity;
@@ -104,7 +195,7 @@ export class ActivityDetailPage extends LitElement {
                       >Edit activity</a
                     >
                   </header>
-                  ${this.url.searchParams.get('saved') === '1' ? html`<p role="status">Activity saved. <a href=${this.back}>Return to your journal</a></p>` : nothing}
+                  ${this.url.searchParams.get('saved') === '1' ? html`<p role="status">Activity saved. <a href=${this.back}>${this.back.startsWith('/goals/') ? 'Return to goal' : 'Return to your journal'}</a></p>` : nothing}
                   <section aria-label="Activity details">
                     <dl>
                       <dt>Activity date</dt>
@@ -175,6 +266,7 @@ export class ActivityDetailPage extends LitElement {
                         </section>`
                       : nothing
                   }
+                  ${this.matchingGoals()}
                   <footer>
                     <button
                       id="delete"
@@ -216,6 +308,12 @@ export class ActivityDetailPage extends LitElement {
         min-height: 44px;
         align-items: center;
         margin-bottom: var(--space-5);
+      }
+      .matching-goal {
+        display: inline-flex;
+        align-items: center;
+        min-height: 44px;
+        overflow-wrap: anywhere;
       }
       h1 svg {
         vertical-align: middle;

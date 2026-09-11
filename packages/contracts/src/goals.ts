@@ -79,10 +79,21 @@ const validateGoal = (
 };
 export const CreateGoalRequestSchema =
   GoalRequestFieldsSchema.superRefine(validateGoal);
-export const UpdateGoalRequestSchema = GoalRequestFieldsSchema.partial().refine(
-  (v) => Object.keys(v).length > 0,
-  'At least one field is required',
-);
+// Creation defaults must not become implicit changes in a PATCH request.
+export const UpdateGoalRequestSchema = GoalRequestFieldsSchema.partial()
+  .extend({
+    description: GoalRequestFieldsSchema.shape.description.unwrap().optional(),
+    activityVariantId: GoalRequestFieldsSchema.shape.activityVariantId
+      .unwrap()
+      .optional(),
+    tagIds: GoalRequestFieldsSchema.shape.tagIds.unwrap().optional(),
+    measurementDefinitionId:
+      GoalRequestFieldsSchema.shape.measurementDefinitionId.unwrap().optional(),
+    recurrencePeriod: GoalRequestFieldsSchema.shape.recurrencePeriod
+      .unwrap()
+      .optional(),
+  })
+  .refine((v) => Object.keys(v).length > 0, 'At least one field is required');
 export const GoalSchema = z.strictObject({
   id: z.uuid(),
   name: z.string(),
@@ -250,3 +261,24 @@ export type GoalContributionsQuery = z.infer<
 export type GoalContributionsResponse = z.infer<
   typeof GoalContributionsResponseSchema
 >;
+
+export const ActivityGoalsQuerySchema = z.strictObject({
+  limit: boundedInteger(50).pipe(z.number().min(1)).default(25),
+  offset: boundedInteger(1000000).default(0),
+});
+export const ActivityGoalsResponseSchema = z.strictObject({
+  items: z.array(
+    GoalSchema.pick({
+      id: true,
+      name: true,
+      scheduleMode: true,
+      recurrencePeriod: true,
+      startDate: true,
+      endDate: true,
+      lifecycle: true,
+    }).extend({ period: GoalPeriodRangeSchema.nullable() }),
+  ),
+  pagination: ActivityPaginationSchema,
+});
+export type ActivityGoalsQuery = z.infer<typeof ActivityGoalsQuerySchema>;
+export type ActivityGoalsResponse = z.infer<typeof ActivityGoalsResponseSchema>;

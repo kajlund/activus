@@ -10,6 +10,7 @@ import {
 } from '../../db/schema.js';
 import { ApiError } from '../../errors.js';
 import type { GoalRepository, GoalRecord } from './model.js';
+import { utcToday } from './clock.js';
 const fields = {
   id: goals.id,
   name: goals.name,
@@ -186,8 +187,7 @@ export function createGoalRepository(db: Database): GoalRepository {
       );
   }
   return {
-    async list(query) {
-      const today = new Date().toISOString().slice(0, 10);
+    async list(query, today = utcToday()) {
       const lifecycle = query.lifecycle;
       const rows = await db
         .select({
@@ -202,7 +202,7 @@ export function createGoalRepository(db: Database): GoalRepository {
           and(
             lifecycle === 'archived'
               ? sql`${goals.archivedAt} IS NOT NULL`
-              : query.includeArchived
+              : query.includeArchived && !lifecycle
                 ? undefined
                 : isNull(goals.archivedAt),
             lifecycle === 'upcoming'

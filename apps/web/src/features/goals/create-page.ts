@@ -60,6 +60,7 @@ export class GoalFormPage extends LitElement {
   tags: Tag[] = [];
   busy = false;
   loading = true;
+  private loadFailed = false;
   error: unknown;
   confirming = false;
   leaving = false;
@@ -159,6 +160,7 @@ export class GoalFormPage extends LitElement {
 
   async load() {
     this.loading = true;
+    this.loadFailed = false;
     this.error = undefined;
     try {
       const id = this.goalId,
@@ -183,6 +185,7 @@ export class GoalFormPage extends LitElement {
       );
       if (goal) await this.loadKindReferences(goal.activityKindId, goal);
     } catch (error) {
+      this.loadFailed = true;
       this.error = error;
     } finally {
       this.loading = false;
@@ -340,6 +343,7 @@ export class GoalFormPage extends LitElement {
   }
   private async submit(input: CreateGoalRequest) {
     if (this.busy) return;
+    const previous = this.original;
     this.busy = true;
     this.error = undefined;
     try {
@@ -357,11 +361,25 @@ export class GoalFormPage extends LitElement {
         this.baseline = input;
       }
       this.setDirty(false);
-      const destination =
+      let destination =
         safeGoalDetailReturn(
           new URL(this.route, location.origin).searchParams.get('returnTo'),
         ) ??
         (this.goal ? goalsPath(this.goal.lifecycle) : goalReturn(this.route));
+      if (
+        previous &&
+        this.goal &&
+        (previous.scheduleMode !== this.goal.scheduleMode ||
+          previous.recurrencePeriod !== this.goal.recurrencePeriod ||
+          previous.startDate !== this.goal.startDate ||
+          previous.endDate !== this.goal.endDate)
+      ) {
+        // A formerly valid weekly/clipped period may not exist after editing
+        // the schedule. Let detail choose the new server-provided default.
+        const url = new URL(destination, location.origin);
+        url.searchParams.delete('period');
+        destination = url.pathname + url.search;
+      }
       navigate(`${destination}${destination.includes('?') ? '&' : '?'}saved=1`);
     } catch (error) {
       this.error = error;
@@ -379,7 +397,7 @@ export class GoalFormPage extends LitElement {
 
   override render() {
     if (this.loading) return html`<p role="status">Loading goal…</p>`;
-    if (this.error && !this.goal)
+    if (this.loadFailed)
       return html`${this.error instanceof ClientError && this.error.kind === 'not-found' ? html`<h1>Goal not found</h1>` : html`<h1>Goal unavailable</h1>`}
         <p role="alert">${clientMessage(this.error)}</p>
         <button @click=${this.load}>Retry goal</button>`;

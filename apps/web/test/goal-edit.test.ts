@@ -172,6 +172,18 @@ it('warns for progress changes but saves name-only changes without warning', asy
   await settle(first.page);
   expect(first.page.shadowRoot!.querySelector('dialog')?.open).toBe(true);
   expect(first.service.updateGoal).not.toHaveBeenCalled();
+  first.page.route = `/goals/${id}/edit?returnTo=${encodeURIComponent(`/goals/${id}?view=active&period=2026-09-07`)}`;
+  first.service.updateGoal.mockResolvedValue({
+    ...goal,
+    recurrencePeriod: 'month',
+  });
+  first.page
+    .shadowRoot!.querySelector<HTMLButtonElement>('dialog button.primary')!
+    .click();
+  await settle(first.page);
+  expect(location.pathname + location.search).toBe(
+    `/goals/${id}?view=active&saved=1`,
+  );
 
   document.body.replaceChildren();
   const second = await mount();
@@ -296,6 +308,7 @@ it('returns a created upcoming goal to its lifecycle view and preserves the view
   const { page, service } = await mountCreate();
   page.route = '/goals/new?view=ended';
   service.createGoal.mockResolvedValue({ ...goal, lifecycle: 'upcoming' });
+  service.createGoal.mockRejectedValueOnce(new Error('Unavailable'));
   const root = page.shadowRoot!;
   const kind = root.querySelector<HTMLSelectElement>('[name=kind]')!;
   kind.value = kindId;
@@ -311,6 +324,13 @@ it('returns a created upcoming goal to its lifecycle view and preserves the view
   submit(page);
   await settle(page);
   expect(service.createGoal).toHaveBeenCalledOnce();
+  expect(root.querySelector<HTMLInputElement>('[name=name]')?.value).toBe(
+    'Next year',
+  );
+  expect(page.dirty).toBe(true);
+  submit(page);
+  await settle(page);
+  expect(service.createGoal).toHaveBeenCalledTimes(2);
   expect(location.pathname + location.search).toBe(
     '/goals?view=upcoming&saved=1',
   );

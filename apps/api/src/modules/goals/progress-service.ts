@@ -15,6 +15,9 @@ import {
   type GoalPeriodsResponse,
   type GoalContributionsQuery,
   type GoalContributionsResponse,
+  ActivityGoalsResponseSchema,
+  type ActivityGoalsQuery,
+  type ActivityGoalsResponse,
 } from '@activus/contracts';
 import {
   toActivitySummary,
@@ -24,7 +27,11 @@ import {
   decimal as preciseDecimal,
   divideForDisplay,
 } from '../activities/decimal.js';
-type Clock = () => string;
+import {
+  utcToday,
+  calculatedAt as calculationTimestamp,
+  type GoalClock,
+} from './clock.js';
 type RecurringPeriod = Extract<
   GoalProgress,
   { scheduleMode: 'recurring' }
@@ -55,7 +62,10 @@ function startOf(d: string, p: 'week' | 'month' | 'year') {
       ? monthStart(d)
       : yearStart(d);
 }
-function periodRange(goal: GoalRecord, date: string): GoalPeriodRange {
+function periodRange(
+  goal: Pick<GoalRecord, 'startDate' | 'endDate' | 'recurrencePeriod'>,
+  date: string,
+): GoalPeriodRange {
   const start = startOf(date, goal.recurrencePeriod!);
   const end = addDays(nextPeriod(start, goal.recurrencePeriod!), -1);
   return {
@@ -115,16 +125,65 @@ export class GoalProgressService {
     } & Partial<
       Pick<
         ReturnType<typeof createGoalProgressRepository>,
-        'aggregateMany' | 'overviewMetadata' | 'contributions'
+        | 'aggregateMany'
+        | 'overviewMetadata'
+        | 'contributions'
+        | 'matchingActivity'
       >
     >,
-    private readonly clock: Clock = () => new Date().toISOString().slice(0, 10),
+    private readonly clock: GoalClock = utcToday,
   ) {}
-  async overview(query: GoalOverviewQuery): Promise<GoalOverviewResponse> {
-    const records = await this.goals.list({
-      lifecycle: query.lifecycle,
-      includeArchived: query.lifecycle === 'archived',
+  async matchingActivity(
+    id: string,
+    query: ActivityGoalsQuery,
+  ): Promise<ActivityGoalsResponse> {
+    if (!this.data.matchingActivity)
+      throw new Error('Matching goals repository unavailable');
+    const result = await this.data.matchingActivity(
+      parseId(id, 'ACTIVITY_INVALID'),
+      query.limit,
+      query.offset,
+    );
+    if (!result)
+      throw new ApiError(404, 'ACTIVITY_NOT_FOUND', 'Activity not found');
+    const today = this.clock();
+    const hasMore = result.rows.length > query.limit;
+    return ActivityGoalsResponseSchema.parse({
+      items: result.rows.slice(0, query.limit).map((row) => ({
+        ...row,
+        lifecycle:
+          today < row.startDate
+            ? 'upcoming'
+            : today > row.endDate
+              ? 'ended'
+              : 'active',
+        period:
+          row.scheduleMode === 'recurring'
+            ? periodRange(
+                {
+                  ...row,
+                  recurrencePeriod:
+                    row.recurrencePeriod as GoalRecord['recurrencePeriod'],
+                },
+                result.date,
+              )
+            : null,
+      })),
+      pagination: {
+        ...query,
+        hasMore,
+        nextOffset: hasMore ? query.offset + query.limit : null,
+      },
     });
+  }
+  async overview(query: GoalOverviewQuery): Promise<GoalOverviewResponse> {
+    const records = await this.goals.list(
+      {
+        lifecycle: query.lifecycle,
+        includeArchived: query.lifecycle === 'archived',
+      },
+      this.clock(),
+    );
     const result = await this.project(records);
     return {
       ...result,
@@ -225,7 +284,7 @@ export class GoalProgressService {
               : progress?.currentPeriod
                 ? display(progress.currentPeriod.remainingValue)
                 : null,
-          goal: toGoal(record),
+          goal: toGoal(record, this.clock()),
           kindName: meta.kindName,
           iconName: meta.iconName,
           variantName: meta.variantName,
@@ -398,8 +457,8 @@ export class GoalProgressService {
           )
         : raw;
     };
-    const lifecycle = toGoal(goal).lifecycle;
-    const calculatedAt = new Date().toISOString();
+    const lifecycle = toGoal(goal, this.clock()).lifecycle;
+    const calculatedAt = calculationTimestamp();
     if (goal.scheduleMode === 'fixed') {
       return {
         scheduleMode: 'fixed',

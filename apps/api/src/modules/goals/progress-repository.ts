@@ -1,4 +1,4 @@
-import { sql, and, eq, desc } from 'drizzle-orm';
+import { sql, and, eq, desc, getTableColumns } from 'drizzle-orm';
 import type { Database } from '../../db/client.js';
 import {
   activities,
@@ -17,6 +17,36 @@ import { withMeasurements } from '../activities/repository.js';
 export type DailyAggregate = { activityDate: string; value: string };
 export function createGoalProgressRepository(db: Database) {
   return {
+    async matchingActivity(id: string, limit: number, offset: number) {
+      return db.transaction(
+        async (tx) => {
+          const activity = (
+            await tx
+              .select({ date: activities.activityDate })
+              .from(activities)
+              .where(eq(activities.id, id))
+          )[0];
+          if (!activity) return undefined;
+          const rows = await tx
+            .select({
+              id: goals.id,
+              name: goals.name,
+              startDate: goals.startDate,
+              endDate: goals.endDate,
+              scheduleMode: goals.scheduleMode,
+              recurrencePeriod: goals.recurrencePeriod,
+            })
+            .from(goals)
+            .innerJoin(activities, goalQualification())
+            .where(and(eq(activities.id, id), sql`${goals.archivedAt} IS NULL`))
+            .orderBy(goals.startDate, goals.id)
+            .limit(limit + 1)
+            .offset(offset);
+          return { date: activity.date, rows };
+        },
+        { isolationLevel: 'repeatable read', accessMode: 'read only' },
+      );
+    },
     async overviewMetadata(ids: string[]) {
       const result =
         await db.execute(sql`SELECT ${goals.id} AS id, ${activityKinds.name} AS "kindName", ${activityKinds.iconName} AS "iconName", ${activityVariants.name} AS "variantName", ${measurementDefinitions.name} AS "measurementName", ${measurementDefinitions.displayUnit} AS "displayUnit", ${measurementDefinitions.precision} AS precision,
@@ -88,7 +118,13 @@ export function createGoalProgressRepository(db: Database) {
         async (tx) => {
           const rows = await tx
             .select({
-              activity: activities,
+              activity: {
+                ...getTableColumns(activities),
+                // Summary only needs presence; do not load long journal notes.
+                notes: sql<
+                  string | null
+                >`CASE WHEN ${activities.notes} IS NULL THEN NULL ELSE '' END`,
+              },
               kind: activityKinds,
               variant: activityVariants,
             })

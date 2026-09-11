@@ -13,6 +13,9 @@ import {
 } from '@activus/contracts';
 import {
   GoalSchema,
+  ActivityGoalsResponseSchema,
+  type ActivityGoalsResponse,
+  type ActivityGoalsQuery,
   GoalOverviewResponseSchema,
   GoalDetailSchema,
   GoalPeriodsResponseSchema,
@@ -51,6 +54,13 @@ export interface ActivityApi {
     input: UpdateActivityRequest,
     signal?: AbortSignal,
   ): Promise<Activity>;
+}
+export interface ActivityGoalsApi {
+  activityGoals(
+    id: string,
+    query: ActivityGoalsQuery,
+    signal?: AbortSignal,
+  ): Promise<ActivityGoalsResponse>;
 }
 export interface GoalApi {
   getGoal(id: string, signal?: AbortSignal): Promise<Goal>;
@@ -275,6 +285,7 @@ export function createConfigurationApi(
   MeasurementApi &
   TagApi &
   ActivityApi &
+  ActivityGoalsApi &
   JournalApi &
   GoalApi &
   GoalOverviewApi &
@@ -399,6 +410,14 @@ export function createConfigurationApi(
       request(`/goals/${encodeURIComponent(id)}/archive`, GoalSchema, 'POST'),
     restoreGoal: (id) =>
       request(`/goals/${encodeURIComponent(id)}/restore`, GoalSchema, 'POST'),
+    activityGoals: (id, query, signal) =>
+      request(
+        `/goals/for-activity/${encodeURIComponent(id)}?${new URLSearchParams({ limit: String(query.limit), offset: String(query.offset) })}`,
+        ActivityGoalsResponseSchema,
+        'GET',
+        undefined,
+        signal,
+      ),
     getGoal: (id, signal) =>
       request(
         `/goals/${encodeURIComponent(id)}`,

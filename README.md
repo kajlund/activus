@@ -88,7 +88,7 @@ drizzle/             Generated SQL migrations and snapshots
 
 Build output lives in each package's `dist/`. Contracts export compiled JavaScript and TypeScript declarations; they contain only environment-independent transport schemas. The default export condition also lets Drizzle Kit load the same ESM module through Node's supported `require(esm)` bridge. API logs use generated request IDs and omit request bodies, query strings, credentials, and arbitrary exception messages. Error responses use stable codes and request IDs; internal details remain private in every environment.
 
-The web shell follows the six approved navigation labels. Activities opens the journal, Activity kinds is implemented, and Settings links to configuration management, including Tags. The other destinations remain placeholders. A mobile navigation disclosure uses native keyboard behavior. Both themes follow `prefers-color-scheme`; motion respects `prefers-reduced-motion`.
+The web shell follows the six approved navigation labels. Activities opens the journal; Goals supports creation, lifecycle views, detail, editing, archive and restore. Activity kinds is implemented, and Settings links to configuration management, including Tags. Overview and general Progress remain placeholders. A mobile navigation disclosure uses native keyboard behavior. Both themes follow `prefers-color-scheme`; motion respects `prefers-reduced-motion`.
 
 ## Configuration client (phases 3A and 3B)
 
@@ -355,4 +355,14 @@ See [the phase 3F report](.doc/phase-3f-core-journal-hardening-report.md) for te
 
 Bulk reordering remains deferred: phase 2A did not establish a complete-list reorder pattern. Ordinary `sortOrder` edits remain available. Explicit inherited-definition overrides/hiding are deferred until their semantics are designed. Optional development seeds remain deferred; migrations contain no opinionated kinds.
 
-Reporting work, goals (including tag-scoped goals), progress and personal-best calculations, tag analytics/grouping, authentication and legacy import remain deferred. Per-tag activity counts, deployment, Docker and chart selection remain deferred. No Git repository or Git configuration is initialized or changed.
+General reporting, personal-best calculations, tag analytics/grouping, authentication and legacy import remain deferred. Per-tag activity counts, deployment, Docker and chart selection remain deferred.
+
+### Goals (Phase 4)
+
+`/goals` offers active, upcoming, ended and archived views. `/goals/new`, `/goals/:id`, and `/goals/:id/edit` complete the definition and progress journey. Fixed and recurring goals support counts, duration and additive numeric measurements, scoped by kind, optional exact variant and match-all required tags. Recurring periods follow ISO weeks, calendar months or years, clipped to inclusive goal dates. Lifecycle uses the UTC calendar date and remains independent of achievement.
+
+Activity detail includes **Counts toward goals**, linking non-archived goals under their current definitions and selecting the activity's recurring period. `GET /api/v1/goals/for-activity/:id?limit=25&offset=0` returns compact typed matches (maximum 50 per page). Ended and upcoming non-archived goals can match; "active" here does not restrict matching to today's lifecycle.
+
+Progress is derived on every read. Route entry, return from editing, **Refresh goal**, and browser document restoration refresh affected results. Matching-goal failures leave activity detail intact. Archived configuration retains its IDs and real labels in history; new selections exclude it, retained references can be edited, and restore explains blocked references. PATCH changes only supplied fields.
+
+Quality commands: `pnpm test`, `pnpm test:db` (guarded test database), `pnpm typecheck`, `pnpm build`, `pnpm lint`, and changed-file Prettier checks. See `.doc/phase-4f-goals-integration-report.md` for verification and remaining limitations.

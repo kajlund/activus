@@ -14,6 +14,7 @@ import {
   type GoalOverviewApi,
 } from '../../services/configuration-api.js';
 import { navigate } from '../../routes/navigation.js';
+import { onRestoredPage } from '../../routes/restored-page.js';
 import { activityIcon } from '../activity-kinds/icons.js';
 import { journalDate, startTime } from '../journal/format.js';
 import { referenceText, tagsView } from '../journal/presentation.js';
@@ -76,6 +77,11 @@ export class GoalDetailPage extends LitElement {
   private periodRequest: AbortController | undefined;
   private contributionRequest: AbortController | undefined;
   private trigger: HTMLElement | undefined;
+  private stopRestoredPage: (() => void) | undefined;
+  override connectedCallback() {
+    super.connectedCallback();
+    this.stopRestoredPage = onRestoredPage(() => void this.load());
+  }
   private get goalId() {
     return new URL(this.route, location.origin).pathname.split('/')[2] ?? '';
   }
@@ -112,6 +118,7 @@ export class GoalDetailPage extends LitElement {
     }
   }
   override disconnectedCallback() {
+    this.stopRestoredPage?.();
     this.definitionRequest?.abort();
     this.periodRequest?.abort();
     this.contributionRequest?.abort();
@@ -161,7 +168,12 @@ export class GoalDetailPage extends LitElement {
     this.progressError = undefined;
     try {
       const data = await this.api.goalDetail(this.goalId, controller.signal);
-      if (!controller.signal.aborted) this.data = data;
+      if (!controller.signal.aborted) {
+        this.data = data;
+        this.selected = this.resolveSelection();
+        if (data.goal.scheduleMode === 'recurring') void this.loadPeriods();
+        void this.loadContributions();
+      }
     } catch (error) {
       if (!controller.signal.aborted) this.progressError = error;
     }
@@ -421,6 +433,9 @@ export class GoalDetailPage extends LitElement {
                       ${d.goal.description ? html`<p class="description">${d.goal.description}</p>` : nothing}
                     </div>
                     <div class="actions">
+                      <button @click=${this.refreshProgress}>
+                        Refresh goal
+                      </button>
                       ${!d.goal.isArchived ? html`<a class="primary" href=${`/goals/${d.goal.id}/edit?returnTo=${encodeURIComponent(this.detailPath)}`}>Edit goal</a>` : nothing}<button
                         class="lifecycle-action"
                         ?disabled=${this.busy}

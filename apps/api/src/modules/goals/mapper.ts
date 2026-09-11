@@ -1,8 +1,8 @@
 import { GoalSchema } from '@activus/contracts';
 import type { GoalRecord } from './model.js';
-export function toGoal(row: GoalRecord) {
+import { utcToday } from './clock.js';
+export function toGoal(row: GoalRecord, today = utcToday()) {
   const { archivedAt, ...fields } = row;
-  const today = new Date().toISOString().slice(0, 10);
   return GoalSchema.parse({
     ...fields,
     lifecycle: row.archivedAt

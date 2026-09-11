@@ -18,7 +18,7 @@ export type GoalRecord = {
   tagIds: string[];
 };
 export interface GoalRepository {
-  list(query: GoalListQuery): Promise<GoalRecord[]>;
+  list(query: GoalListQuery, today?: string): Promise<GoalRecord[]>;
   find(id: string): Promise<GoalRecord | undefined>;
   create(input: CreateGoalRequest): Promise<GoalRecord>;
   update(id: string, input: CreateGoalRequest): Promise<GoalRecord | undefined>;

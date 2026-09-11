@@ -11,6 +11,7 @@ import {
 } from '../../services/configuration-api.js';
 import { archiveConfirmation } from './presentation.js';
 import { navigate } from '../../routes/navigation.js';
+import { onRestoredPage } from '../../routes/restored-page.js';
 import { activityIcon } from '../activity-kinds/icons.js';
 import { duration, exactNumber, journalDate } from '../journal/format.js';
 import { goalDetailPath, goalsPath, goalView, goalViews } from './state.js';
@@ -39,10 +40,16 @@ export class GoalsPage extends LitElement {
   private status = '';
   private controller: AbortController | undefined;
   private trigger: HTMLElement | undefined;
+  private stopRestoredPage: (() => void) | undefined;
+  override connectedCallback() {
+    super.connectedCallback();
+    this.stopRestoredPage = onRestoredPage(() => void this.load());
+  }
   private get view() {
     return goalView(this.route);
   }
   override disconnectedCallback() {
+    this.stopRestoredPage?.();
     this.controller?.abort();
     super.disconnectedCallback();
   }
