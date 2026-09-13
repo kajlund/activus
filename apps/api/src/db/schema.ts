@@ -131,6 +131,44 @@ const literals = (values: readonly string[]) =>
     sql`, `,
   );
 
+// One source kind can resolve a parent, variant and multiple measurement definitions.
+export const legacyReferenceMappings = pgTable(
+  'legacy_reference_mappings',
+  {
+    source: text('source').notNull(),
+    collection: text('collection').notNull(),
+    sourceId: text('source_id').notNull(),
+    role: text('role').notNull(),
+    kindId: uuid('kind_id').references(() => activityKinds.id, {
+      onDelete: 'restrict',
+    }),
+    variantId: uuid('variant_id').references(() => activityVariants.id, {
+      onDelete: 'restrict',
+    }),
+    definitionId: uuid('definition_id').references(
+      () => measurementDefinitions.id,
+      { onDelete: 'restrict' },
+    ),
+    fingerprint: text('fingerprint').notNull(),
+    disposition: text('disposition').notNull(),
+    formatVersion: integer('format_version').notNull(),
+    appliedAt: timestamp('applied_at', { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+  },
+  (t) => [
+    primaryKey({ columns: [t.source, t.collection, t.sourceId, t.role] }),
+    check(
+      'legacy_reference_destination_valid',
+      sql`num_nonnulls(${t.kindId}, ${t.variantId}, ${t.definitionId}) = 1`,
+    ),
+    check(
+      'legacy_reference_disposition_valid',
+      sql`${t.disposition} IN ('created', 'reused')`,
+    ),
+  ],
+);
+
 export const activities = pgTable(
   'activities',
   {

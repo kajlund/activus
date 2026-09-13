@@ -9,3 +9,9 @@ coverage/
 .artifacts/
 playwright-report/
 test-results/
+# Personal legacy exports used for local migration analysis.
+/data/activities.ndjson
+/data/kinds.ndjson
+/data/manifest.json
+/data/mapping-decisions.json
+/data/import-report.json

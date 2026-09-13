@@ -7,6 +7,8 @@
     "node": "^22.13.0 || ^24.0.0 || >=26.0.0"
   },
   "scripts": {
+    "import:legacy": "node scripts/import/cli.mjs",
+    "test:import": "pnpm --filter @activus/api exec vitest run test/legacy-import.test.ts test/legacy-activity-mapping.test.ts",
     "dev": "pnpm --filter @activus/contracts build && concurrently --kill-others --names contracts,api,web \"pnpm --filter @activus/contracts dev\" \"pnpm --filter @activus/api dev\" \"pnpm --filter @activus/web dev\"",
     "build": "pnpm -r build",
     "typecheck": "pnpm --filter @activus/contracts build && pnpm -r typecheck",

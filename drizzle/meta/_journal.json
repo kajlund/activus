@@ -50,6 +50,13 @@
       "when": 1788872733607,
       "tag": "0006_goals",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1789276727068,
+      "tag": "0007_legacy_reference_mappings",
+      "breakpoints": true
     }
   ]
 }

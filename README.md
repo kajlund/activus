@@ -82,7 +82,7 @@ apps/web/
   test/              Shell, API-client and configuration component tests
   e2e/               Isolated Playwright journeys and HTTP fixture
 packages/contracts/  Health, configuration, activity, tag, unit and error contracts
-scripts/import/      Reserved for the future JSON importer
+scripts/import/      Legacy export analysis and Phase 5B dry-run CLI (no apply mode)
 drizzle/             Generated SQL migrations and snapshots
 ```
 
