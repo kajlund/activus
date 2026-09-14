@@ -4,41 +4,41 @@ Activus training journal, through phase 3E: PostgreSQL configuration, activity a
 
 ## Setup
 
-Use Node.js 22.13+ (22.x), 24+, or a newer supported even release and pnpm 10.34.5. Dependencies are pinned exactly and recorded in `pnpm-lock.yaml`.
+Use Node.js 22.13+ (22.x), 24+, or a newer supported even release and npm (included with Node.js). Dependencies are pinned exactly and recorded in `package-lock.json`.
 
 ```sh
-pnpm install --frozen-lockfile
-pnpm db:migrate
-pnpm dev
+npm ci
+npm run db:migrate
+npm run dev
 ```
 
-If pnpm is unavailable, prefix commands with `npx --yes pnpm@10.34.5` instead of `pnpm`; no global installation is necessary.
+Use `npm ci` for a clean install from the committed lockfile; no additional package manager is needed.
 
 Before migrating or starting the API, copy `.env.example` to `.env` at the repository root and set `DATABASE_URL` to your development PostgreSQL database. Existing process environment variables take precedence. Never commit credentials. `DATABASE_URL` is required for real server startup and migrations; app-only tests need no database. `WEB_ORIGIN` must be an HTTP(S) origin without a path or trailing slash.
 
 Open <http://localhost:5173>. Vite proxies `/api` to the API on port 3000 (or `PORT` from the root environment). The server exposes `GET /health` outside the API prefix, returning `{"status":"ok"}`; access it directly at <http://localhost:3000/health> with the default port. This is process health, not database readiness. `WEB_ORIGIN` controls API CORS; Vite uses a fixed port with strict port checking.
 
-`pnpm dev` builds contracts first, then watches contracts, API, and web together. Ctrl+C stops the process group; an exited child stops its siblings. The API verifies database connectivity before listening, handles SIGINT/SIGTERM, stops accepting requests, and closes its pool after requests finish. Shutdown has a 15-second deadline; database statements have a 10-second timeout. Startup never applies migrations or seeds data.
+`npm run dev` builds contracts first, then watches contracts, API, and web together. Ctrl+C stops the process group; an exited child stops its siblings. The API verifies database connectivity before listening, handles SIGINT/SIGTERM, stops accepting requests, and closes its pool after requests finish. Shutdown has a 15-second deadline; database statements have a 10-second timeout. Startup never applies migrations or seeds data.
 
 ## Commands
 
-| Command                            | Purpose                                                                                         |
-| ---------------------------------- | ----------------------------------------------------------------------------------------------- |
-| `pnpm dev`                         | Start all development watchers                                                                  |
-| `pnpm build`                       | Build contracts, Node API, and static web assets                                                |
-| `pnpm typecheck`                   | Check all source, tests, and Vite configuration                                                 |
-| `pnpm test`                        | Run API and client Vitest tests                                                                 |
-| `pnpm test:browser`                | Run isolated Chrome configuration, entry and journal journeys in four screen/theme combinations |
-| `pnpm lint`                        | Run ESLint with zero warnings allowed                                                           |
-| `pnpm format`                      | Format project files                                                                            |
-| `pnpm format:check`                | Check formatting                                                                                |
-| `pnpm --filter @activus/api start` | Run the compiled API after building                                                             |
-| `pnpm db:generate`                 | Generate SQL and snapshots from the Drizzle schema, offline                                     |
-| `pnpm db:check`                    | Check Drizzle migration history consistency, offline                                            |
-| `pnpm db:migrate`                  | Apply committed migrations using validated `DATABASE_URL`                                       |
-| `pnpm test:db`                     | Run real PostgreSQL tests against guarded `TEST_DATABASE_URL`                                   |
+| Command                                  | Purpose                                                                                         |
+| ---------------------------------------- | ----------------------------------------------------------------------------------------------- |
+| `npm run dev`                            | Start all development watchers                                                                  |
+| `npm run build`                          | Build contracts, Node API, and static web assets                                                |
+| `npm run typecheck`                      | Check all source, tests, and Vite configuration                                                 |
+| `npm test`                               | Run API and client Vitest tests                                                                 |
+| `npm run test:browser`                   | Run isolated Chrome configuration, entry and journal journeys in four screen/theme combinations |
+| `npm run lint`                           | Run ESLint with zero warnings allowed                                                           |
+| `npm run format`                         | Format project files                                                                            |
+| `npm run format:check`                   | Check formatting                                                                                |
+| `npm run start --workspace @activus/api` | Run the compiled API after building                                                             |
+| `npm run db:generate`                    | Generate SQL and snapshots from the Drizzle schema, offline                                     |
+| `npm run db:check`                       | Check Drizzle migration history consistency, offline                                            |
+| `npm run db:migrate`                     | Apply committed migrations using validated `DATABASE_URL`                                       |
+| `npm run test:db`                        | Run real PostgreSQL tests against guarded `TEST_DATABASE_URL`                                   |
 
-`pnpm test` runs unit, direct Hono API, and client tests without a database or TCP listener. `pnpm test:db` is separate and uses real PostgreSQL, never SQLite or a test double. Client tests use jsdom. Manrope is bundled from a local dependency, with system fallbacks and no font CDN requests.
+`npm test` runs unit, direct Hono API, and client tests without a database or TCP listener. `npm run test:db` is separate and uses real PostgreSQL, never SQLite or a test double. Client tests use jsdom. Manrope is bundled from a local dependency, with system fallbacks and no font CDN requests.
 
 ## Structure and boundaries
 
@@ -104,7 +104,7 @@ Requests have cancellation, a 15-second timeout, response-schema validation, saf
 
 Complete-list transactional reorder endpoints remain deferred by the backend. The client preserves server order and offers ordinary numeric order edits; there is no drag reordering or sequence of per-row reorder writes.
 
-Browser tests use installed Google Chrome (`channel: chrome`). If Chrome is unavailable, install it or run `pnpm --filter @activus/web exec playwright install chrome`. `pnpm test:browser` builds the web client, then starts and stops an isolated Vite preview server on port 4173. Every API request is intercepted by deterministic test-created state; no development or production database is accessed. Screenshots and failure traces are written under `.artifacts/phase-3a/` for all client phases. Tests run at 1440×1000 and 390×844 in light and dark themes. Static production hosting will need an SPA fallback for deep links when deployment is implemented.
+Browser tests use installed Google Chrome (`channel: chrome`). If Chrome is unavailable, install it or run `npm exec --workspace @activus/web -- playwright install chrome`. `npm run test:browser` builds the web client, then starts and stops an isolated Vite preview server on port 4173. Every API request is intercepted by deterministic test-created state; no development or production database is accessed. Screenshots and failure traces are written under `.artifacts/phase-3a/` for all client phases. Tests run at 1440×1000 and 390×844 in light and dark themes. Static production hosting will need an SPA fallback for deep links when deployment is implemented.
 
 ## PostgreSQL setup and migrations
 
@@ -119,11 +119,11 @@ CREATE DATABASE activus OWNER activus;
 Configure the root `.env` with the matching connection URL, then run:
 
 ```sh
-pnpm db:migrate
-pnpm dev
+npm run db:migrate
+npm run dev
 ```
 
-For schema changes, edit `apps/api/src/db/schema.ts`, run `pnpm db:generate`, inspect the generated SQL in `drizzle/`, and run `pnpm db:check` before `pnpm db:migrate`. Commit SQL and metadata together. The migration command uses the Drizzle migrator and its migration journal. There is no schema-push workflow, automatic migration, seed data, or production deployment configuration.
+For schema changes, edit `apps/api/src/db/schema.ts`, run `npm run db:generate`, inspect the generated SQL in `drizzle/`, and run `npm run db:check` before `npm run db:migrate`. Commit SQL and metadata together. The migration command uses the Drizzle migrator and its migration journal. There is no schema-push workflow, automatic migration, seed data, or production deployment configuration.
 
 ## Activity-kind API and storage policy
 
@@ -299,7 +299,7 @@ CREATE ROLE activus_test LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE;
 CREATE DATABASE activus_test OWNER activus_test;
 ```
 
-Set `TEST_DATABASE_URL=postgresql://activus_test:YOUR_PASSWORD@localhost:5432/activus_test` in the root `.env` or process environment, then run `pnpm test:db`. The normal `DATABASE_URL` remains separate. URI-encode any special characters in passwords.
+Set `TEST_DATABASE_URL=postgresql://activus_test:YOUR_PASSWORD@localhost:5432/activus_test` in the root `.env` or process environment, then run `npm run test:db`. The normal `DATABASE_URL` remains separate. URI-encode any special characters in passwords.
 
 Guards require a database named `activus_test` or `activus_test_...`, the role `activus_test`, no URL query overrides, non-production `NODE_ENV`, and a database name different from `DATABASE_URL` even when hostnames differ. The suite verifies the actual database/role and refuses superuser, database-creator or role-creator connections before migrating. It applies committed migrations only to this test database and removes only UUIDs it inserted; it never drops or truncates a database/schema/table. Without `TEST_DATABASE_URL`, the database suite reports explicit skips. An unsafe URL or a configured but unreachable database fails rather than silently skipping.
 
@@ -313,7 +313,7 @@ Search uses a 300 ms debounce and the existing case-insensitive tag API. `search
 
 Archive/restore use confirmation dialogs and preserve historical associations. Names remain reserved across archived tags under the existing backend policy; conflicts preserve entered data and show request IDs. PATCH sends changed fields only, including explicit `color: null` when clearing colour. Duplicate submissions are blocked and mutations never retry automatically. Dialogs retain the existing focus trap, Escape, dirty-discard warning and focus-restoration conventions. A removed row returns focus to the page heading.
 
-`pnpm test` covers the typed client and tag components. `pnpm test:browser` adds tag creation/editing, archive/restore, search/history and error-state journeys to the existing configuration suite. Browser data uses the same isolated HTTP fixtures as phases 3A/B, never the development database. The retained `.artifacts/phase-3a/` directory also contains `tags-*` screenshots for this phase. See `.doc/phase-3c-tag-management-report.md` for results and implementation details.
+`npm test` covers the typed client and tag components. `npm run test:browser` adds tag creation/editing, archive/restore, search/history and error-state journeys to the existing configuration suite. Browser data uses the same isolated HTTP fixtures as phases 3A/B, never the development database. The retained `.artifacts/phase-3a/` directory also contains `tags-*` screenshots for this phase. See `.doc/phase-3c-tag-management-report.md` for results and implementation details.
 
 ## Activity entry (phase 3D)
 
@@ -347,7 +347,7 @@ Navigation protects dirty configuration and activity forms, including browser Ba
 
 The API rejects mutating requests with an Origin other than its own origin or configured `WEB_ORIGIN`. Requests without Origin remain supported for CLI clients; this is not authentication. Production web builds do not load the API's root environment file, so a development `NODE_ENV` cannot select Lit's development bundle. Development still reads the root API port for its proxy.
 
-Run `pnpm format:check`, `pnpm lint`, `pnpm typecheck`, `pnpm test`, `pnpm test:db`, `pnpm db:check`, `pnpm build`, `pnpm test:browser`, and `pnpm audit`. With Microsoft Edge installed, `pnpm test:browser:edge` runs the additional hardening journeys in both themes. Run browser commands sequentially because they use the same preview port. `pnpm audit --prod` checks production dependencies separately.
+Run `npm run format:check`, `npm run lint`, `npm run typecheck`, `npm test`, `npm run test:db`, `npm run db:check`, `npm run build`, `npm run test:browser`, and `npm audit`. With Microsoft Edge installed, `npm run test:browser:edge` runs the additional hardening journeys in both themes. Run browser commands sequentially because they use the same preview port. `npm audit --omit=dev` checks production dependencies separately.
 
 See [the phase 3F report](.doc/phase-3f-core-journal-hardening-report.md) for test results, query measurements, accessibility evidence, and remaining verification limits.
 
@@ -365,4 +365,4 @@ Activity detail includes **Counts toward goals**, linking non-archived goals und
 
 Progress is derived on every read. Route entry, return from editing, **Refresh goal**, and browser document restoration refresh affected results. Matching-goal failures leave activity detail intact. Archived configuration retains its IDs and real labels in history; new selections exclude it, retained references can be edited, and restore explains blocked references. PATCH changes only supplied fields.
 
-Quality commands: `pnpm test`, `pnpm test:db` (guarded test database), `pnpm typecheck`, `pnpm build`, `pnpm lint`, and changed-file Prettier checks. See `.doc/phase-4f-goals-integration-report.md` for verification and remaining limitations.
+Quality commands: `npm test`, `npm run test:db` (guarded test database), `npm run typecheck`, `npm run build`, `npm run lint`, and changed-file Prettier checks. See `.doc/phase-4f-goals-integration-report.md` for verification and remaining limitations.

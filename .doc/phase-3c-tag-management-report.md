@@ -1,5 +1,7 @@
 # Phase 3C: Tag management UI
 
+Package-manager migration note: commands below are now expressed as npm equivalents; the recorded historical results have not been rerun for this documentation update.
+
 Implemented the tag-management client at `/tags`, reached through **Settings → Tags**. The six primary navigation sections remain unchanged. Settings also links to activity-kind and measurement configuration; it introduces no unrelated settings features.
 
 ## Files and components
@@ -38,14 +40,14 @@ No backend, contracts, database, migration or dependency changes were required. 
 
 ## Verification
 
-Commands used the pinned pnpm version through `npx --yes pnpm@10.34.5`:
+Equivalent npm commands:
 
 | Check | Result |
 | --- | --- |
-| `pnpm test` | 356 API tests and 57 web tests passed |
-| `pnpm typecheck` | All workspaces passed |
-| `pnpm build` | Contracts, API and production web build passed |
-| `pnpm test:browser` | 36 Chrome tests passed, including 16 tag tests |
+| `npm test` | 356 API tests and 57 web tests passed |
+| `npm run typecheck` | All workspaces passed |
+| `npm run build` | Contracts, API and production web build passed |
+| `npm run test:browser` | 36 Chrome tests passed, including 16 tag tests |
 | Installed Prettier CLI `--check .` | Passed, equivalent to root `format:check` |
 | Installed ESLint CLI `. --max-warnings 0` | Passed, equivalent to root `lint` |
 | `git diff --check` | Passed |

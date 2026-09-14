@@ -1,5 +1,7 @@
 # Phase 3D — Activity entry
 
+Package-manager migration note: commands below are now expressed as npm equivalents; the recorded historical results have not been rerun for this documentation update.
+
 ## Scope and routes
 
 Implemented creation at `/activities/new` and editing at `/activities/:id/edit`. The persistent **Record activity** action opens creation; the six primary navigation labels remain unchanged. Activities is selected for entry routes.
@@ -49,14 +51,14 @@ No dependencies, shared contracts, backend implementation, database schema or mi
 
 ## Verification
 
-The existing installed dependencies were used; no install or dependency update was necessary. Commands use pinned pnpm through `npx --yes pnpm@10.34.5` where applicable.
+The existing installed dependencies were used; no install or dependency update was necessary. Commands below use npm workspace syntax.
 
 | Check | Result |
 | --- | --- |
-| `pnpm test` | Passed: 356 API tests and 93 web tests (36 new activity-entry tests alongside 57 existing tests). |
-| `pnpm test:browser` | Passed: 64 Chrome journeys, including 28 activity-entry journeys. |
-| `pnpm typecheck` | Passed for all workspaces. |
-| `pnpm build` | Passed: contracts, API and production web assets. |
+| `npm test` | Passed: 356 API tests and 93 web tests (36 new activity-entry tests alongside 57 existing tests). |
+| `npm run test:browser` | Passed: 64 Chrome journeys, including 28 activity-entry journeys. |
+| `npm run typecheck` | Passed for all workspaces. |
+| `npm run build` | Passed: contracts, API and production web assets. |
 | Installed ESLint CLI `. --max-warnings 0` | Passed; root lint equivalent. |
 | Installed Prettier CLI `--check .` | Passed; root format-check equivalent. |
 | `git diff --check` | Passed. |

@@ -1,5 +1,11 @@
 # Phase 5A — Legacy import mapping
 
+**Phase 5 migration complete (2026-09-14).** Final read-only reconciliation verified
+218 activities and 472 measurements. All mappings are resolved; five provisional
+Treadmill records remain available for optional manual review. See the
+[closure record](phase-5b-import-framework-report.md) for API checks, private
+review-list location, artifact retention and the future maintenance command.
+
 Updated 2026-09-13 after inspecting the raw MongoDB exports. **Current mapping input: `data/activities.ndjson` (218) and `data/kinds.ndjson` (10).** The earlier 181-row array snapshot is comparison evidence only. Identity-preserving source data are now available; file/index identities and another export are not needed for this dataset.
 
 Status: Phase 5C reference data have been applied and the repeat apply created no duplicates. The [migration framework report](phase-5b-import-framework-report.md) documents the ledger, preview, transactions and results. Phase 5D has now committed all 218 activities and 472 measurements using the final approved rules. Raw NDJSON source files remain unchanged. See [analysis](legacy-import-analysis.md) and [input format](legacy-export-format.md).

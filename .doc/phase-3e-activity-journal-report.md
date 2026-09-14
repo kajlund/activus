@@ -1,5 +1,7 @@
 # Phase 3E: Activity journal
 
+Package-manager migration note: commands below are now expressed as npm equivalents; the recorded historical results have not been rerun for this documentation update.
+
 Completed 8 September 2026. Scope is the activity journal and its integration with the existing Phase 3D editor.
 
 ## Routes and files
@@ -55,14 +57,14 @@ The existing DELETE endpoint is permanent. Confirmation identifies the kind, pre
 
 ## Verification
 
-- pnpm test: 356 API tests and 118 web tests passed (including 25 journal component/integration tests).
-- pnpm test:browser: 96 browser cases passed across all four viewport/theme projects, including all prior configuration and entry journeys.
-- pnpm --filter @activus/web exec playwright test e2e/journal.spec.ts: all 32 cases passed again with the final expanded multi-measurement and sparse-record visual fixtures.
-- pnpm typecheck and pnpm build passed for all workspace packages.
+- npm run test: 356 API tests and 118 web tests passed (including 25 journal component/integration tests).
+- npm run test:browser: 96 browser cases passed across all four viewport/theme projects, including all prior configuration and entry journeys.
+- npm exec --workspace @activus/web -- playwright test e2e/journal.spec.ts: all 32 cases passed again with the final expanded multi-measurement and sparse-record visual fixtures.
+- npm run typecheck and npm run build passed for all workspace packages.
 - ESLint ran with --max-warnings 0 and passed.
 - Prettier --check . and git diff --check passed. The phase report was separately formatted because .doc is excluded from the root formatting command.
 
-Commands use npx --yes pnpm@10.34.5 where pnpm is not installed globally. Existing dependencies were sufficient; no package or lockfile changes were needed. Browser output includes the existing environment-level NO_COLOR/FORCE_COLOR warning, unrelated to application code.
+Commands below use npm workspace syntax. Existing dependencies were sufficient; no package or lockfile changes were needed. Browser output includes the existing environment-level NO_COLOR/FORCE_COLOR warning, unrelated to application code.
 
 Tests exercise real Hono routes and domain services through isolated repository doubles. Browser HTTP requests are intercepted by those fixtures and never reach the development database. No live PostgreSQL test rerun or migration was needed for this frontend-only change; this report does not claim new live-database verification.
 

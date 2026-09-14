@@ -1,5 +1,13 @@
 # Legacy import
 
+**Maintenance tool: Phase 5 migration completed 2026-09-14.** This command is
+retained for audit/reconciliation and is not part of normal application startup.
+Prefer read-only `--stage activities` for future checks. Do not normally rerun
+apply after manual edits; a content conflict protects those edits. Keep the private
+exports, manifest, decisions and reports in their existing ignored locations.
+See [migration closure](../../.doc/phase-5b-import-framework-report.md) and the
+private `.artifacts/legacy-import/phase-5e-treadmill-review.json` for optional review.
+
 ## Phase 5D activities
 
 ```powershell
@@ -17,11 +25,11 @@ for exact verification commands, counts and manual-review warnings.
 Phase 5B provides source inspection; Phase 5C adds explicit reference-only preview/apply (below). Phase 5A specifications and confirmed activity decisions are in [legacy-import-mapping.md](../../.doc/legacy-import-mapping.md), with [export formats](../../.doc/legacy-export-format.md) and [analysis](../../.doc/legacy-import-analysis.md).
 
 ```powershell
-pnpm import:legacy --input data --report .artifacts/legacy-import/dry-run.json
-pnpm test:import
+npm run import:legacy -- --input data --report .artifacts/legacy-import/dry-run.json
+npm run test:import
 ```
 
-Run from the repository root. If pnpm is not on PATH, `node scripts/import/cli.mjs` accepts the same arguments and uses the already-installed API TypeScript runner. Exit 1 means the report contains blocking issues; unresolved mappings are intentionally reported rather than guessed. For source-only inspection, no database connection is made and `--apply` without an explicit database stage is rejected, and reports must be outside the source directory. See the [Phase 5B report](../../.doc/phase-5b-import-framework-report.md) for input/config schemas, safety guarantees, real-run counts and next-stage requirements.
+Run from the repository root. For direct execution without the npm script, `node scripts/import/cli.mjs` accepts the same arguments and uses the already-installed API TypeScript runner. Exit 1 means the report contains blocking issues; unresolved mappings are intentionally reported rather than guessed. For source-only inspection, no database connection is made and `--apply` without an explicit database stage is rejected, and reports must be outside the source directory. See the [Phase 5B report](../../.doc/phase-5b-import-framework-report.md) for input/config schemas, safety guarantees, real-run counts and next-stage requirements.
 
 Run the current raw-export inventory with Node 24 (verified on 24.17.0):
 

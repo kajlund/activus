@@ -1,5 +1,12 @@
 import { defineConfig } from '@playwright/test';
-import { fileURLToPath } from 'node:url';
+import { createRequire } from 'node:module';
+import { fileURLToPath, pathToFileURL } from 'node:url';
+const viteCli = fileURLToPath(
+  new URL(
+    './bin/vite.js',
+    pathToFileURL(createRequire(import.meta.url).resolve('vite/package.json')),
+  ),
+);
 export default defineConfig({
   testDir: './e2e',
   fullyParallel: true,
@@ -30,8 +37,7 @@ export default defineConfig({
     },
   ],
   webServer: {
-    command:
-      'node node_modules/vite/bin/vite.js preview --host 127.0.0.1 --port 4173 --strictPort',
+    command: `"${process.execPath}" "${viteCli}" preview --host 127.0.0.1 --port 4173 --strictPort`,
     cwd: fileURLToPath(new URL('.', import.meta.url)),
     url: 'http://127.0.0.1:4173',
     reuseExistingServer: false,

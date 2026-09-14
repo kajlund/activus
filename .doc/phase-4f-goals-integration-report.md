@@ -1,5 +1,7 @@
 # Phase 4F — Goals integration and hardening
 
+Package-manager migration note: commands below are now expressed as npm equivalents; the recorded historical results have not been rerun for this documentation update.
+
 Implemented the connected goal/activity flow without adding later-phase features.
 
 ## Corrections and integration
@@ -21,7 +23,7 @@ Plans are local test artifacts at `.artifacts/phase-4f/goal-query-plans.json`. T
 
 - Guarded PostgreSQL suite: 83 tests passed. The combined journey verifies fixed measurement progress after creation, duration/measurement edits, kind/variant/date/tag qualification, weekly period moves, criteria edits, pagination/de-duplication, archived labels, restore conflicts, and deletion. Existing tests cover exact decimals, missing/zero measurements, archived measurement references and contributions.
 - Focused contract/API regression covers partial updates and inclusive lifecycle boundaries with an injected date. Two new frontend tests cover linked matching goals/browser restoration and independent failure/retry. The existing create-return test also checks draft retention after failure.
-- `pnpm test`: 360 API/unit tests and 144 frontend tests passed. `pnpm test:db`: 83 database tests passed. `pnpm typecheck`, `pnpm build`, ESLint with zero warnings, changed-source Prettier formatting, and `git diff --check` passed.
+- `npm test`: 360 API/unit tests and 144 frontend tests passed. `npm run test:db`: 83 database tests passed. `npm run typecheck`, `npm run build`, ESLint with zero warnings, changed-source Prettier formatting, and `git diff --check` passed.
 
 ## Manual verification limits
 

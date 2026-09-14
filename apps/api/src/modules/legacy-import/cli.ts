@@ -5,7 +5,7 @@ import { pathToFileURL } from 'node:url';
 import { dryRun } from './dry-run.js';
 import { terminalSummary, writeReport } from './report.js';
 
-const help = `Usage: pnpm import:legacy --input <export-directory> [--report <report.json>] [--dry-run]
+const help = `Usage: npm run import:legacy -- --input <export-directory> [--report <report.json>] [--dry-run]
 
 Reads kinds.ndjson and activities.ndjson (canonical Extended JSON).
 Validates manifest.json and mapping-decisions.json when supplied; missing

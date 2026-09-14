@@ -1,5 +1,7 @@
 # Phase 3A and 3B implementation report
 
+Package-manager migration note: commands below are now expressed as npm equivalents; the recorded historical results have not been rerun for this documentation update.
+
 Completed 2026-09-07. Scope is configuration UI only. No backend, database, migration, authentication, deployment, import, activity-entry, tag-management, goal or progress changes.
 
 ## Files
@@ -59,14 +61,14 @@ The kind/variant feature, routing, client boundary and browser setup were presen
 
 ## Verification
 
-Commands run (pnpm via `npx --yes pnpm@10.34.5`):
+Equivalent npm commands:
 
 | Check | Result |
 | --- | --- |
-| `pnpm test` | 356 API tests and 38 web tests passed |
-| `pnpm typecheck` | All workspaces passed |
-| `pnpm build` | Contracts, API and production web build passed |
-| `pnpm test:browser` | 20 Chrome journeys passed against the production web build |
+| `npm test` | 356 API tests and 38 web tests passed |
+| `npm run typecheck` | All workspaces passed |
+| `npm run build` | Contracts, API and production web build passed |
+| `npm run test:browser` | 20 Chrome journeys passed against the production web build |
 | `node node_modules/prettier/bin/prettier.cjs --check .` | Passed; equivalent to root `format:check` |
 | `node node_modules/eslint/bin/eslint.js . --max-warnings 0` | Passed; equivalent to root `lint` |
 | `git diff --check` | Passed |

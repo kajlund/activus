@@ -26,7 +26,7 @@ Last updated: 2026-09-08
 | Logging | Pino structured logging |
 | Unit and integration tests | Vitest |
 | Browser tests | Playwright, added for critical workflows |
-| Package management | pnpm workspace |
+| Package management | npm workspaces |
 
 Pin exact versions when the project is scaffolded. Do not copy version numbers from this planning document.
 
@@ -67,7 +67,7 @@ activus/
 │   └── import/
 ├── drizzle/
 ├── package.json
-├── pnpm-workspace.yaml
+├── package-lock.json
 └── tsconfig.base.json
 ```
 

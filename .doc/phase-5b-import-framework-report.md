@@ -1,4 +1,84 @@
-# Phases 5B–5D — Legacy import framework and results
+# Phases 5B–5E — Legacy import framework and closure
+
+## Phase 5 migration complete — 2026-09-14
+
+Final read-only reconciliation for lineage `activus-personal` passed: **218 source
+activities, 218 destination activities, 472 measurements**, zero skipped, blocked,
+conflicting, unmatched or unexpected identities. Reference-ledger targets,
+canonical values, original metadata and export checksums match. Tags and goals
+remain zero. Phase 5D created 218/472 on its first apply and 0/0 on its second;
+Phase 5E performed **no apply, database writes or automatic data corrections**.
+
+Future maintenance reconciliation (never part of normal application startup):
+
+```powershell
+node scripts/import/cli.mjs --input data --report .artifacts/legacy-import/maintenance-reconciliation.json --stage activities
+```
+
+The closure run used the same command with report path
+`.artifacts/legacy-import/phase-5e-reconciliation.json`. Do not normally rerun
+apply after manual edits: changed canonical content should produce a conflict,
+and the importer must not revert the user's edits.
+
+### Application checks and optional review
+
+Using the normal Hono activity endpoints, service, repository and response
+schemas inside a read-only PostgreSQL transaction, all **218 detail responses**
+and **218 paginated list entries** succeeded. Six deliberate samples verified:
+
+- date-only calendar date with null start;
+- Helsinki calendar date with the original timed UTC start;
+- source `6a85a86fd22d3159d3bd2537`: exactly 4030 metres, displayed as 4.03 km;
+- omitted measurements with no invented zero rows;
+- elevation fallback producing exactly one Ascent value;
+- Walking/Treadmill with the original title and notes available through the API.
+
+Sample source/destination IDs and sanitized check results are retained in
+`.artifacts/legacy-import/phase-5e-application-checks.json`. All definition totals
+match: Distance 120, Ascent 100, Steps 39, Calories 126, heart rate 49 and cadence
+38. No new browser suite was added; these are application API checks.
+
+The private list `.artifacts/legacy-import/phase-5e-treadmill-review.json` contains
+the five destination IDs, source external IDs, dates, current titles, Walking /
+Treadmill assignments, notes-presence flags and `/activities/<id>` routes. It
+contains **no note contents**. The sole optional human task is to review those
+five records and decide Walking versus Running individually. No gait was inferred
+and no Running/Treadmill variant was pre-created. The expected audit warnings
+remain informational (including five treadmill reviews and one exact correction).
+
+Ordinary editing was checked on isolated in-memory copies using the normal
+activity service: identity stayed attached, no duplicate appeared, and subsequent
+import preview reported one changed-content conflict and refused apply. The
+real imported records were not edited. Existing Phase 5D PostgreSQL conflict
+coverage remains in `test/integration/legacy-references.test.ts`.
+
+### Small defect corrected and checks run
+
+The existing activity test double incorrectly cleared `source` and
+`sourceExternalId` during an update, unlike the real repository, which updates
+only editable fields. The helper now preserves those fields. One focused service
+regression verifies an ordinary imported-activity edit preserves identity and
+row count. No production importer or application behavior changed.
+
+Ran only the new focused service case, final reconciliation and the read-only
+application checks. API typecheck/build and scoped lint/format/whitespace checks
+passed because the test helper changed. The broader Phase 5D suite and apply
+were not repeated for closure.
+
+### Retention
+
+Keep `data/activities.ndjson` and `data/kinds.ndjson` as the original private
+snapshot; keep `data/manifest.json` and `data/mapping-decisions.json` as its
+checksum-bound provenance and approved transformation rules. Keep the original
+5B–5D machine reports and the new 5E reports under `.artifacts/legacy-import/`
+as audit evidence. All these locations remain git-ignored; ignore coverage was
+verified, and no relocation, deletion or ignore-rule change was needed.
+
+Retain the importer, package maintenance command, schema migrations and database
+ledger as the reproducible maintenance tool and stable identity record. No raw
+export, manifest, decision file, earlier report or ledger row was rewritten in
+5E. Do not move private review titles or source payloads into public documentation.
+No later application phase was started.
 
 ## Phase 5D activity import
 
@@ -161,7 +241,7 @@ dates or numeric corrections.
 
 ### Verification commands
 
-Commands used from the repository root (same arguments work with `pnpm import:legacy`):
+Commands used from the repository root (same arguments work with `npm run import:legacy --`):
 
 ```powershell
 node scripts/import/cli.mjs --input data --report .artifacts/legacy-import/phase-5c-preview.json --stage reference-data
@@ -172,7 +252,7 @@ node scripts/import/cli.mjs --input data --report .artifacts/legacy-import/phase
 
 Before apply, only migration 0007 was applied to the configured development
 database, after verifying there were no other pending migrations. Normal future
-setup uses `pnpm db:migrate`. PostgreSQL connections required sandbox escalation;
+setup uses `npm run db:migrate`. PostgreSQL connections required sandbox escalation;
 no substitute database or live MongoDB access was used.
 
 Six focused PostgreSQL tests cover zero-write preview, transactional creation,
@@ -206,13 +286,13 @@ Implemented a TypeScript dry-run CLI for the raw Phase 5A exports. It decodes an
 
 ## Commands
 
-From the repository root, using the pinned pnpm version:
+From the repository root, using the npm workspace commands:
 
 ```powershell
-pnpm import:legacy --input data --report .artifacts/legacy-import/phase-5b-first.json
-pnpm import:legacy --input data --report .artifacts/legacy-import/phase-5b-second.json
-pnpm import:legacy --help
-pnpm test:import
+npm run import:legacy -- --input data --report .artifacts/legacy-import/phase-5b-first.json
+npm run import:legacy -- --input data --report .artifacts/legacy-import/phase-5b-second.json
+npm run import:legacy -- --help
+npm run test:import
 ```
 
 The command requires an explicit export directory. `--dry-run` is optional because it is the only mode. `--apply` is rejected before export reads. Unknown/positional arguments are rejected. Default output is `.artifacts/legacy-import/dry-run.json`, relative to the calling working directory. Explicit report paths must be outside the export directory. Existing files are replaced only if they are regular, unaliased Activus v1 dry-run reports. Writes use an atomic temporary-file/rename boundary and never touch source files.

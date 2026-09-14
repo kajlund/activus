@@ -2,27 +2,26 @@
   "name": "activus",
   "private": true,
   "type": "module",
-  "packageManager": "pnpm@10.34.5",
   "engines": {
     "node": "^22.13.0 || ^24.0.0 || >=26.0.0"
   },
   "scripts": {
     "import:legacy": "node scripts/import/cli.mjs",
-    "test:import": "pnpm --filter @activus/api exec vitest run test/legacy-import.test.ts test/legacy-activity-mapping.test.ts",
-    "dev": "pnpm --filter @activus/contracts build && concurrently --kill-others --names contracts,api,web \"pnpm --filter @activus/contracts dev\" \"pnpm --filter @activus/api dev\" \"pnpm --filter @activus/web dev\"",
-    "build": "pnpm -r build",
-    "typecheck": "pnpm --filter @activus/contracts build && pnpm -r typecheck",
-    "test": "pnpm --filter @activus/contracts build && pnpm -r --if-present test",
+    "test:import": "npm exec --workspace @activus/api -- vitest run test/legacy-import.test.ts test/legacy-activity-mapping.test.ts",
+    "dev": "npm run build --workspace @activus/contracts && concurrently --kill-others --names contracts,api,web \"npm run dev --workspace @activus/contracts\" \"npm run dev --workspace @activus/api\" \"npm run dev --workspace @activus/web\"",
+    "build": "npm run build --workspace @activus/contracts && npm run build --workspace @activus/api && npm run build --workspace @activus/web",
+    "typecheck": "npm run build --workspace @activus/contracts && npm run typecheck --workspaces",
+    "test": "npm run build --workspace @activus/contracts && npm run test --workspaces --if-present",
     "lint": "eslint . --max-warnings 0",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
-    "db:generate": "pnpm --filter @activus/contracts build && pnpm --filter @activus/api db:generate",
-    "db:migrate": "pnpm --filter @activus/contracts build && pnpm --filter @activus/api db:migrate",
-    "db:check": "pnpm --filter @activus/api db:check",
-    "test:db": "pnpm --filter @activus/contracts build && pnpm --filter @activus/api test:db",
-    "test:browser": "pnpm --filter @activus/contracts build && pnpm --filter @activus/web build && pnpm --filter @activus/web test:browser",
-    "test:browser:edge": "pnpm --filter @activus/contracts build && pnpm --filter @activus/web build && pnpm --filter @activus/web exec playwright test --config playwright.edge.config.ts",
-    "audit": "pnpm audit"
+    "db:generate": "npm run build --workspace @activus/contracts && npm run db:generate --workspace @activus/api --",
+    "db:migrate": "npm run build --workspace @activus/contracts && npm run db:migrate --workspace @activus/api --",
+    "db:check": "npm run db:check --workspace @activus/api --",
+    "test:db": "npm run build --workspace @activus/contracts && npm run test:db --workspace @activus/api --",
+    "test:browser": "npm run build --workspace @activus/contracts && npm run build --workspace @activus/web && npm run test:browser --workspace @activus/web --",
+    "test:browser:edge": "npm run build --workspace @activus/contracts && npm run build --workspace @activus/web && npm exec --workspace @activus/web -- playwright test --config playwright.edge.config.ts",
+    "audit": "npm audit"
   },
   "devDependencies": {
     "@eslint/js": "10.0.1",
@@ -34,5 +33,9 @@
     "typescript": "5.9.3",
     "typescript-eslint": "8.69.0",
     "vitest": "5.0.0"
-  }
+  },
+  "workspaces": [
+    "packages/*",
+    "apps/*"
+  ]
 }

@@ -1,9 +1,0 @@
-packages:
-  - apps/*
-  - packages/*
-  - scripts/import
-
-saveExact: true
-strictPeerDependencies: true
-onlyBuiltDependencies:
-  - esbuild

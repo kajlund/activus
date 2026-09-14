@@ -112,8 +112,8 @@ export function activityDoubles() {
       rows.set(nextId, {
         ...write.fields,
         id: nextId,
-        source: null,
-        sourceExternalId: null,
+        source: existing?.activity.source ?? null,
+        sourceExternalId: existing?.activity.sourceExternalId ?? null,
         createdAt: existing?.activity.createdAt ?? now,
         updatedAt: now,
       });

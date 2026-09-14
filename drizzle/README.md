@@ -1,6 +1,6 @@
 # Database migrations
 
-Versioned Drizzle SQL migrations and metadata for PostgreSQL. Generate with `pnpm db:generate`, inspect each SQL file, check history with `pnpm db:check`, then apply explicitly with `pnpm db:migrate`.
+Versioned Drizzle SQL migrations and metadata for PostgreSQL. Generate with `npm run db:generate`, inspect each SQL file, check history with `npm run db:check`, then apply explicitly with `npm run db:migrate`.
 
 Phase 2A creates only `activity_kinds`. Its global `lower(name)` unique index reserves archived names too, so both concurrent writes and restore operations are protected. PostgreSQL generates UUIDs; all instant columns use `timestamp with time zone`. Checks enforce normalized nonempty names, uppercase six-digit hex colours, supported Lucide identifiers and non-negative sort order. Full and partial active indexes support deterministic list ordering.
 
@@ -8,7 +8,7 @@ Phase 2B adds `0001_variants_measurements.sql`: both child tables are created be
 
 `0002_configuration_guards.sql` is a tracked custom migration for cross-row rules that cannot be expressed as ordinary checks: inherited-name conflicts, immutable ownership, archived-parent protection, valid primary selection, and default clearing on kind archival. Child writes take a no-op update lock on their owning kind, providing serialization even against stale repeatable-read snapshots. Selected primary definitions cannot be archived or made unsuitable. Repository transactions replace defaults atomically; the unique index also protects direct SQL writes.
 
-Both new migrations were manually reviewed for table/foreign-key order, null-aware uniqueness, partial indexes, checks, circular references and delete behaviour. They contain no destructive statements or seeds. The applied phase 2A migration remains unchanged. Custom trigger SQL is maintained here; Drizzle snapshots represent the structural schema, not trigger bodies. Keep SQL and `meta/` snapshots together. Apply with `pnpm db:migrate`; server startup never migrates automatically.
+Both new migrations were manually reviewed for table/foreign-key order, null-aware uniqueness, partial indexes, checks, circular references and delete behaviour. They contain no destructive statements or seeds. The applied phase 2A migration remains unchanged. Custom trigger SQL is maintained here; Drizzle snapshots represent the structural schema, not trigger bodies. Keep SQL and `meta/` snapshots together. Apply with `npm run db:migrate`; server startup never migrates automatically.
 
 Phase 2C adds `0003_activities.sql`: `activities` uses a separate journal `date`, optional `timestamptz` start, nonnegative safe-integer `bigint` overall duration, nullable text and 1–5 ratings, explicit partial status, and all-or-none unique source identity. Its composite variant/kind foreign key rejects inconsistent ownership. Journal-order, kind/date and variant/date indexes support listing. Source fields cannot be supplied through normal API contracts.
 
@@ -16,7 +16,7 @@ Phase 2C adds `0003_activities.sql`: `activities` uses a separate journal `date`
 
 `0004_measurement_history.sql` adds a focused configuration guard that locks type, canonical unit, precision and bounds while values reference a definition. Its trigger runs after the existing configuration guard's kind serialization. The activity repository takes the same kind lock before validating/writing values. Display changes and archival remain possible.
 
-The phase 2C SQL was reviewed for date/instant separation, exact numeric behaviour, typed checks, uniqueness, foreign-key order/delete behaviour and listing indexes. Neither new migration deletes existing data or changes an applied migration. The test runner applies them only after validating the dedicated test database's URL and actual role/identity; development migration remains an explicit `pnpm db:migrate` action.
+The phase 2C SQL was reviewed for date/instant separation, exact numeric behaviour, typed checks, uniqueness, foreign-key order/delete behaviour and listing indexes. Neither new migration deletes existing data or changes an applied migration. The test runner applies them only after validating the dedicated test database's URL and actual role/identity; development migration remains an explicit `npm run db:migrate` action.
 
 Phase 2D adds `0005_tags.sql`. `tags` has UUID identity, a trimmed 1–120-character name, nullable uppercase six-digit hex colour, archival state and timestamps. The global unique `lower(name)` index reserves archived names too, following the existing historical-name policy. A normalized-name/ID index supports alphabetical listing.
 

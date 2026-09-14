@@ -1,5 +1,7 @@
 # Phase 3F core journal hardening
 
+Package-manager migration note: commands below are now expressed as npm equivalents; the recorded historical results have not been rerun for this documentation update.
+
 Reviewed 2026-09-08. No Phase 4 functionality, database schema changes, migrations, authentication, deployment, Docker, or import work was added.
 
 ## Workflows and corrections
@@ -18,22 +20,22 @@ Reviewed `/activity-kinds`, `/activity-kinds/:id`, `/tags`, `/settings`, `/activ
 
 ## Verification
 
-Commands use the pinned pnpm version through `npx --yes pnpm@10.34.5` in this environment.
+Commands below use npm workspace syntax.
 
 | Check | Result |
 | --- | --- |
-| `pnpm test` | 358 API and 122 web tests passed; no skips |
-| `pnpm test:db` | 80 guarded PostgreSQL integration tests passed; no skips |
-| `pnpm test:browser` | 108 Chrome cases passed, retries disabled |
-| `pnpm test:browser:edge` | Six hardening cases passed in light and dark themes |
+| `npm test` | 358 API and 122 web tests passed; no skips |
+| `npm run test:db` | 80 guarded PostgreSQL integration tests passed; no skips |
+| `npm run test:browser` | 108 Chrome cases passed, retries disabled |
+| `npm run test:browser:edge` | Six hardening cases passed in light and dark themes |
 | Final Chrome hardening rerun | All 12 cases passed after the locale-aware assertion update |
-| `pnpm typecheck` | Passed |
-| `pnpm format:check` | Passed |
-| `pnpm lint` | Passed with zero ESLint warnings |
-| `pnpm build` | Contracts, API and production web builds passed |
-| `pnpm db:check` | Passed; no schema changes |
+| `npm run typecheck` | Passed |
+| `npm run format:check` | Passed |
+| `npm run lint` | Passed with zero ESLint warnings |
+| `npm run build` | Contracts, API and production web builds passed |
+| `npm run db:check` | Passed; no schema changes |
 | `git diff --check` | Passed |
-| `pnpm audit --prod` | No known vulnerabilities |
+| `npm audit --omit=dev` | No known vulnerabilities |
 
 Added two API origin tests, four web unit regressions, one database query-count/performance case, and three browser hardening journeys across four Chrome projects. The existing configuration conflict test now explicitly discards dirty changes before leaving. No existing tests were removed. Browser language is requested as `en-US`, with `Europe/Helsinki` timezone. The historical measurement assertion checks the exact localized quantity through the browser's Intl formatting, since installed Edge retained regional decimal formatting even with the requested language.
 

@@ -25,6 +25,22 @@ beforeEach(async () => {
 });
 const create = (patch: Record<string, unknown> = {}) =>
   service.create({ ...validActivity, activityKindId: kindId, ...patch });
+it('preserves imported source identity during an ordinary edit without duplicating the activity', async () => {
+  const activity = await create();
+  const row = deps.rows.get(activity.id)!;
+  row.source = 'legacy-activus-mongodb:sanitized-test';
+  row.sourceExternalId = 'activities:000000000000000000000001';
+  const edited = await service.update(activity.id, {
+    name: 'Reviewed fixture',
+  });
+  expect(edited.name).toBe('Reviewed fixture');
+  expect(deps.rows.size).toBe(1);
+  expect(deps.rows.get(activity.id)).toMatchObject({
+    id: activity.id,
+    source: row.source,
+    sourceExternalId: row.sourceExternalId,
+  });
+});
 it('keeps journal date independent of time, normalizes text and defaults partial to false', async () => {
   const a = await create({
     startedAt: '2024-03-01T00:30:00+02:00',
