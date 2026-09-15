@@ -18,6 +18,7 @@
     "db:generate": "npm run build --workspace @activus/contracts && npm run db:generate --workspace @activus/api --",
     "db:migrate": "npm run build --workspace @activus/contracts && npm run db:migrate --workspace @activus/api --",
     "db:check": "npm run db:check --workspace @activus/api --",
+    "start": "npm run start --workspace @activus/api",
     "test:db": "npm run build --workspace @activus/contracts && npm run test:db --workspace @activus/api --",
     "test:browser": "npm run build --workspace @activus/contracts && npm run build --workspace @activus/web && npm run test:browser --workspace @activus/web --",
     "test:browser:edge": "npm run build --workspace @activus/contracts && npm run build --workspace @activus/web && npm exec --workspace @activus/web -- playwright test --config playwright.edge.config.ts",
