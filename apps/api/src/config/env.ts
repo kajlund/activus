@@ -24,6 +24,7 @@ export const envSchema = z.object({
       return ['http:', 'https:'].includes(url.protocol) && url.origin === value;
     }, 'Must be an HTTP(S) origin without a path or trailing slash')
     .default('http://localhost:5173'),
+  STATIC_DIR: z.string().optional(),
 });
 
 export type Config = z.infer<typeof envSchema>;

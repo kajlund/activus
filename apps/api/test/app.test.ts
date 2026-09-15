@@ -84,4 +84,74 @@ describe('API foundation', () => {
       },
     });
   });
+
+  describe('Static client and SPA fallback', () => {
+    it('serves index.html, static assets, and handles SPA navigation fallback', async () => {
+      const { mkdtemp, writeFile, mkdir, rm } =
+        await import('node:fs/promises');
+      const { tmpdir } = await import('node:os');
+      const { join } = await import('node:path');
+
+      const tempDir = await mkdtemp(join(tmpdir(), 'activus-web-'));
+      try {
+        await writeFile(
+          join(tempDir, 'index.html'),
+          '<!doctype html><html><body>Lit App</body></html>',
+          'utf-8',
+        );
+        await mkdir(join(tempDir, 'assets'));
+        await writeFile(
+          join(tempDir, 'assets', 'sample.js'),
+          'console.log("sample");',
+          'utf-8',
+        );
+
+        const app = createApp(
+          parseEnv({ NODE_ENV: 'production' }),
+          pino({ level: 'silent' }),
+          { staticDir: tempDir },
+        );
+
+        // Root serves index.html
+        const rootRes = await app.request('/');
+        expect(rootRes.status).toBe(200);
+        expect(rootRes.headers.get('content-type')).toContain('text/html');
+        expect(await rootRes.text()).toContain('Lit App');
+
+        // SPA route fallback serves index.html
+        const spaRes = await app.request('/activities');
+        expect(spaRes.status).toBe(200);
+        expect(spaRes.headers.get('content-type')).toContain('text/html');
+        expect(await spaRes.text()).toContain('Lit App');
+
+        // Existing static file
+        const assetRes = await app.request('/assets/sample.js');
+        expect(assetRes.status).toBe(200);
+        expect(await assetRes.text()).toContain('console.log("sample");');
+
+        // Missing static file with extension returns 404 (not index.html)
+        const missingAssetRes = await app.request('/assets/nonexistent.js');
+        expect(missingAssetRes.status).toBe(404);
+
+        // Missing API route returns JSON 404 (not index.html)
+        const missingApiRes = await app.request('/api/v1/nonexistent');
+        expect(missingApiRes.status).toBe(404);
+        expect(await missingApiRes.json()).toMatchObject({
+          error: { code: 'NOT_FOUND' },
+        });
+      } finally {
+        await rm(tempDir, { recursive: true, force: true });
+      }
+    });
+
+    it('gracefully handles non-existent staticDir without throwing', async () => {
+      const app = createApp(
+        parseEnv({ NODE_ENV: 'production' }),
+        pino({ level: 'silent' }),
+        { staticDir: 'non-existent-directory-activus-test' },
+      );
+      const res = await app.request('/');
+      expect(res.status).toBe(404);
+    });
+  });
 });

@@ -1,4 +1,7 @@
 import { randomUUID } from 'node:crypto';
+import { existsSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
+import { serveStatic } from '@hono/node-server/serve-static';
 import { HealthResponseSchema } from '@activus/contracts';
 import type { TagRepository } from './modules/tags/model.js';
 import { TagService } from './modules/tags/service.js';
@@ -41,6 +44,7 @@ export function createApp(
     tags?: TagRepository;
     goals?: GoalRepository;
     goalProgress?: ReturnType<typeof createGoalProgressRepository>;
+    staticDir?: string | undefined;
   } = {},
 ) {
   const app = new Hono<{ Variables: { requestId: string } }>();
@@ -63,7 +67,23 @@ export function createApp(
     );
   });
 
-  app.use('/api/*', cors({ origin: config.WEB_ORIGIN }));
+  app.use(
+    '/api/*',
+    cors({
+      origin: (origin, c) => {
+        if (!origin) return config.WEB_ORIGIN;
+        try {
+          const requestOrigin = new URL(c.req.url).origin;
+          if (origin === config.WEB_ORIGIN || origin === requestOrigin) {
+            return origin;
+          }
+        } catch {
+          // ignore
+        }
+        return config.WEB_ORIGIN;
+      },
+    }),
+  );
   // CORS controls response access, but does not prevent a cross-origin form POST.
   app.use('/api/*', async (c, next) => {
     const origin = c.req.header('Origin');
@@ -146,6 +166,36 @@ export function createApp(
         ),
       ),
     );
+  const staticDir =
+    dependencies.staticDir ??
+    config.STATIC_DIR ??
+    (() => {
+      try {
+        if (
+          typeof import.meta.url === 'string' &&
+          import.meta.url.startsWith('file:')
+        ) {
+          return fileURLToPath(new URL('../../web/dist', import.meta.url));
+        }
+      } catch {
+        // Non-file environments (e.g. bundled or jsdom tests)
+      }
+      return undefined;
+    })();
+
+  if (staticDir && existsSync(staticDir)) {
+    app.use('/*', serveStatic({ root: staticDir }));
+    app.get('*', (c, next) => {
+      if (
+        c.req.path.startsWith('/api/') ||
+        c.req.path === '/health' ||
+        /\.[a-zA-Z0-9]+$/.test(c.req.path)
+      ) {
+        return next();
+      }
+      return serveStatic({ root: staticDir, path: 'index.html' })(c, next);
+    });
+  }
 
   app.notFound((c) =>
     c.json(

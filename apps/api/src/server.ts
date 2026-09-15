@@ -34,6 +34,7 @@ const app = createApp(config, logger, {
   tags: createTagRepository(database.db),
   goals: createGoalRepository(database.db),
   goalProgress: createGoalProgressRepository(database.db),
+  staticDir: config.STATIC_DIR,
 });
 const server = serve({ fetch: app.fetch, port: config.PORT }, (info) => {
   logger.info({ port: info.port }, 'API listening');
