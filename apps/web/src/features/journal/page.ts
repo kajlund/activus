@@ -1,4 +1,10 @@
 import { LitElement, html, nothing, type PropertyValues } from 'lit';
+import {
+  ChevronDown,
+  ChevronUp,
+  SlidersHorizontal,
+  createElement,
+} from 'lucide';
 import { repeat } from 'lit/directives/repeat.js';
 import type {
   ActivityKind,
@@ -9,31 +15,32 @@ import type {
 import {
   configurationApi,
   type JournalApi,
+  type ActivityApi,
+  type ActivityGoalsApi,
   type ConfigurationApi,
   type TagApi,
 } from '../../services/configuration-api.js';
 import { navigate } from '../../routes/navigation.js';
-import { trapDialogFocus } from '../../components/dialog-focus.js';
 import { activityIcon } from '../activity-kinds/icons.js';
-import { journalStyles } from './styles.js';
+import { journalPageStyles } from './page-styles.js';
+import './entry-details.js';
 import { journalDate, startTime, duration } from './format.js';
-import {
-  tagsView,
-  referenceText,
-  readError,
-  measurementView,
-} from './presentation.js';
+import { referenceText, readError, measurementView } from './presentation.js';
 import {
   journalPath,
   parseJournal,
   pageSize,
   withReturn,
+  expandedReturn,
+  expandedActivity,
   type Filters,
 } from './state.js';
 import { JournalFilters } from './filters.js';
 import './delete-dialog.js';
 
 export type JournalPageApi = JournalApi &
+  Pick<ActivityApi, 'getActivity'> &
+  Partial<ActivityGoalsApi> &
   Pick<ConfigurationApi, 'listKinds' | 'listVariants'> &
   Pick<TagApi, 'listTags'>;
 export class ActivityJournalPage extends LitElement {
@@ -54,6 +61,7 @@ export class ActivityJournalPage extends LitElement {
     deleting: { state: true },
     status: { state: true },
     filtersOpen: { state: true },
+    expandedId: { state: true },
   };
   route = location.pathname + location.search;
   api: JournalPageApi = configurationApi;
@@ -71,6 +79,8 @@ export class ActivityJournalPage extends LitElement {
   private deleting: ActivitySummary | undefined;
   private status = '';
   private filtersOpen = false;
+  private expandedId: string | undefined;
+  private restoreFocus = false;
   private loaded = false;
   private generation = 0;
   private referenceGeneration = 0;
@@ -99,6 +109,9 @@ export class ActivityJournalPage extends LitElement {
     if (changed.has('route') || changed.has('api')) {
       this.closeFilters();
       this.deleting = undefined;
+      const restored = expandedActivity(this.url.search);
+      this.restoreFocus = !!restored;
+      this.expandedId = restored ?? this.expandedId;
       void this.load();
       void this.loadVariantLabels();
     }
@@ -178,11 +191,47 @@ export class ActivityJournalPage extends LitElement {
     const generation = this.generation;
     const offset = more ? this.nextOffset! : 0;
     try {
-      const result = await this.api.listActivities(
+      let result = await this.api.listActivities(
         { ...this.filters, limit: pageSize, offset },
         controller.signal,
       );
       if (generation !== this.generation) return;
+      // An edited or previously opened entry may be beyond the first page.
+      // Read only as far as that entry while retaining server ordering.
+      const previous = this.items.find((a) => a.id === this.expandedId);
+      const f = this.filters;
+      const matches =
+        !previous ||
+        ((!f.dateFrom || previous.activityDate >= f.dateFrom) &&
+          (!f.dateTo || previous.activityDate <= f.dateTo) &&
+          (!f.activityKindId || previous.kind.id === f.activityKindId) &&
+          (!f.activityVariantId ||
+            previous.variant?.id === f.activityVariantId) &&
+          (!f.tagIds?.length ||
+            (f.tagMatch === 'all'
+              ? f.tagIds.every((id) => previous.tags.some((t) => t.id === id))
+              : f.tagIds.some((id) =>
+                  previous.tags.some((t) => t.id === id),
+                ))));
+      if (!more && this.expandedId && matches) {
+        const retained = [...result.items];
+        while (
+          !retained.some((a) => a.id === this.expandedId) &&
+          result.pagination.hasMore
+        ) {
+          result = await this.api.listActivities(
+            {
+              ...this.filters,
+              limit: pageSize,
+              offset: result.pagination.nextOffset!,
+            },
+            controller.signal,
+          );
+          if (generation !== this.generation) return;
+          retained.push(...result.items);
+        }
+        result = { ...result, items: retained };
+      }
       this.items = [
         ...new Map(
           (more ? [...this.items, ...result.items] : result.items).map((a) => [
@@ -194,6 +243,8 @@ export class ActivityJournalPage extends LitElement {
       this.nextOffset = result.pagination.hasMore
         ? result.pagination.nextOffset
         : null;
+      if (this.expandedId && !this.items.some((a) => a.id === this.expandedId))
+        this.expandedId = undefined;
       this.loaded = true;
       this.status = `${this.items.length} ${this.items.length === 1 ? 'activity' : 'activities'} shown.`;
     } catch (error) {
@@ -205,6 +256,15 @@ export class ActivityJournalPage extends LitElement {
       if (generation === this.generation) {
         this.loading = false;
         this.moreLoading = false;
+        if (this.restoreFocus && !this.error) {
+          this.restoreFocus = false;
+          await this.updateComplete;
+          const toggle = this.renderRoot.querySelector<HTMLElement>(
+            '#entry-' + this.expandedId,
+          );
+          toggle?.focus({ preventScroll: true });
+          toggle?.scrollIntoView({ block: 'nearest' });
+        }
         if (more) {
           await this.updateComplete;
           this.renderRoot.querySelector<HTMLElement>('#load-more')?.focus();
@@ -212,21 +272,23 @@ export class ActivityJournalPage extends LitElement {
       }
     }
   }
-  private async openFilters(event: Event) {
-    this.opener = event.currentTarget as HTMLElement;
+  private async openFilters() {
+    if (this.filtersOpen) {
+      this.closeFilters();
+      return;
+    }
     this.filtersOpen = true;
     await this.updateComplete;
     this.renderRoot
       .querySelector<JournalFilters>('journal-filters')
       ?.resetDraft();
-    this.renderRoot
-      .querySelector<HTMLDialogElement>('dialog.filters')
-      ?.showModal();
+    this.renderRoot.querySelector<HTMLElement>('#filters-title')?.focus();
   }
   private closeFilters() {
+    const wasOpen = this.filtersOpen;
     this.filtersOpen = false;
-    this.renderRoot.querySelector<HTMLDialogElement>('dialog.filters')?.close();
-    this.opener?.focus();
+    if (wasOpen)
+      this.renderRoot.querySelector<HTMLElement>('#filter-button')?.focus();
   }
   private apply(filters: Filters) {
     this.closeFilters();
@@ -278,51 +340,81 @@ export class ActivityJournalPage extends LitElement {
     return chips;
   }
   private async deleted() {
+    const index = this.items.findIndex((a) => a.id === this.deleting?.id);
+    const neighbor = this.items[index + 1] ?? this.items[index - 1];
+    this.read?.abort();
+    this.read = new AbortController();
+    this.generation++;
+    this.loading = this.moreLoading = false;
     this.items = this.items.filter((a) => a.id !== this.deleting?.id);
+    if (this.nextOffset !== null)
+      this.nextOffset = Math.max(0, this.nextOffset - 1);
     this.deleting = undefined;
-    await this.load();
-    this.status = 'Activity deleted.';
+    this.expandedId = undefined;
+    this.status = `Activity deleted. ${this.items.length} ${this.items.length === 1 ? 'activity' : 'activities'} shown.`;
     await this.updateComplete;
-    this.renderRoot.querySelector<HTMLElement>('h1')?.focus();
+    this.renderRoot
+      .querySelector<HTMLElement>(neighbor ? '#entry-' + neighbor.id : 'h1')
+      ?.focus();
   }
   private row(a: ActivitySummary) {
-    return html`<li class="row">
-      <span class="kind-icon">${activityIcon(a.kind.iconName)}</span>
-      <article class="identity">
-        <a class="title" href=${withReturn(`/activities/${a.id}`, this.context)}
-          >${a.name ?? a.kind.name}</a
+    const open = this.expandedId === a.id;
+    const title = a.name ?? a.variant?.name ?? a.kind.name;
+    const identity = a.name
+      ? referenceText(a)
+      : a.variant
+        ? a.kind.name +
+          (a.kind.isArchived ? ' (archived)' : '') +
+          (a.variant.isArchived ? ' · Archived variant' : '')
+        : a.kind.isArchived
+          ? 'Archived kind'
+          : '';
+    return html`<li class="row" data-expanded=${open}>
+      <button
+        class="row-toggle"
+        id=${'entry-' + a.id}
+        aria-expanded=${open}
+        aria-controls=${'panel-' + a.id}
+        @click=${() => {
+          this.expandedId = open ? undefined : a.id;
+        }}
+      >
+        <span class="kind-icon" style=${'--kind-color:' + a.kind.color}
+          >${activityIcon(a.kind.iconName)}</span
         >
-        <p class="metadata muted">
-          ${referenceText(a)}${a.isPartial ? ' · Partial record' : ''}
-        </p>
-        <div class="facts">
-          ${a.startedAt ? html`<time datetime=${a.startedAt}>${startTime(a.startedAt)}</time>` : nothing}${a.durationSeconds !== null ? html`<span class="measure">${duration(a.durationSeconds)}</span>` : nothing}${a.primaryMeasurement ? html`<span><span class="muted">${a.primaryMeasurement.name}${a.primaryMeasurement.isArchived ? ' (archived)' : ''}:</span> ${measurementView(a.primaryMeasurement)}</span>` : nothing}${a.hasNotes ? html`<span class="muted">Notes recorded</span>` : nothing}
-        </div>
-        ${tagsView(a.tags)}
-      </article>
-      <details>
-        <summary
-          aria-label=${`Actions for ${a.name ?? a.kind.name} on ${journalDate(a.activityDate)}`}
+        <span class="identity">
+          <span class="title">${title}</span>
+          ${identity || a.isPartial ? html`<span class="metadata muted">${identity}${a.isPartial ? (identity ? ' · Partial record' : 'Partial record') : ''}</span>` : nothing}
+        </span>
+        <span class="facts">
+          ${a.startedAt ? html`<time datetime=${a.startedAt}>${startTime(a.startedAt)}</time>` : nothing}
+          ${a.durationSeconds !== null ? html`<span class="measure">${duration(a.durationSeconds)}</span>` : nothing}
+          ${a.primaryMeasurement ? html`<span class="primary-measure"><span class="sr-only">${a.primaryMeasurement.name}: </span>${measurementView(a.primaryMeasurement)}</span>` : nothing}
+        </span>
+        <span class="chevron"
+          >${createElement(open ? ChevronUp : ChevronDown, { width: '20', height: '20', 'aria-hidden': 'true' })}</span
         >
-          Actions
-        </summary>
-        <div class="menu">
-          <a
-            class="button"
-            href=${withReturn(`/activities/${a.id}/edit`, this.context)}
-            >Edit activity</a
-          ><button
-            @click=${(e: Event) => {
-              this.opener = (e.currentTarget as HTMLElement)
-                .closest('details')!
-                .querySelector('summary')!;
-              this.deleting = a;
-            }}
-          >
-            Delete activity
-          </button>
-        </div>
-      </details>
+      </button>
+      <div
+        id=${'panel-' + a.id}
+        role="region"
+        aria-labelledby=${'entry-' + a.id}
+        ?hidden=${!open}
+      >
+        ${
+          open
+            ? html`<journal-entry-details
+                .activityId=${a.id}
+                .api=${this.api}
+                .context=${expandedReturn(this.context, a.id)}
+                @request-delete=${(event: CustomEvent) => {
+                  this.opener = event.detail.opener;
+                  this.deleting = a;
+                }}
+              ></journal-entry-details>`
+            : nothing
+        }
+      </div>
     </li>`;
   }
   override render() {
@@ -343,24 +435,78 @@ export class ActivityJournalPage extends LitElement {
         >
       </header>
       <div class="toolbar">
+        <label class="kind-filter"
+          ><span class="sr-only">Activity kind filter</span
+          ><select
+            aria-label="Activity kind filter"
+            .value=${this.filters.activityKindId ?? ''}
+            ?disabled=${this.referencesLoading || !!this.referenceError}
+            @change=${(event: Event) => {
+              const next = { ...this.filters };
+              delete next.activityVariantId;
+              const id = (event.target as HTMLSelectElement).value;
+              if (id) next.activityKindId = id;
+              else delete next.activityKindId;
+              this.apply(next);
+            }}
+          >
+            <option value="">All activity kinds</option>
+            ${this.kinds.map((kind) => html`<option value=${kind.id} .selected=${kind.id === this.filters.activityKindId}>${kind.name}${kind.isArchived ? ' (archived)' : ''}</option>`)}
+          </select></label
+        >
         <button
           id="filter-button"
-          aria-haspopup="dialog"
+          aria-controls="filters-panel"
           aria-expanded=${this.filtersOpen}
           @click=${this.openFilters}
         >
+          ${createElement(SlidersHorizontal, { width: '16', height: '16', 'aria-hidden': 'true' })}
           Filters${chips.length ? ` (${chips.length})` : ''}</button
         >${chips.length ? html`<button @click=${() => this.apply({})}>Clear all filters</button>` : nothing}
+        <span class="result-count" role="status"
+          >${this.loading ? (this.items.length ? 'Updating results…' : 'Loading activities…') : this.status}</span
+        >
       </div>
+      <section
+        id="filters-panel"
+        class="filters"
+        role="region"
+        aria-labelledby="filters-title"
+        ?hidden=${!this.filtersOpen}
+        @keydown=${(event: KeyboardEvent) => {
+          if (event.key === 'Escape') {
+            event.preventDefault();
+            this.closeFilters();
+          }
+        }}
+      >
+        <h2 id="filters-title" tabindex="-1">Filter journal</h2>
+        ${
+          this.referencesLoading
+            ? html`<p role="status">Loading filter options…</p>
+                <button @click=${this.closeFilters}>Close filters</button>`
+            : this.referenceError
+              ? html`${readError(this.referenceError)}<button
+                    @click=${() => this.loadReferences()}
+                  >
+                    Retry filter options</button
+                  ><button @click=${this.closeFilters}>Close filters</button>`
+              : html`<journal-filters
+                  .filters=${this.filters}
+                  .kinds=${this.kinds}
+                  .tags=${this.tags}
+                  .api=${this.api}
+                  @apply-filters=${(e: CustomEvent<Filters>) => this.apply(e.detail)}
+                  @cancel-filters=${this.closeFilters}
+                ></journal-filters>`
+        }
+      </section>
       <div class="chips">
         ${chips.map((c) => html`<button aria-label=${`Remove filter: ${c.text}`} @click=${() => this.removeFilter(c.key, c.tagId)}>${c.text}<span aria-hidden="true">×</span></button>`)}
       </div>
       ${this.filters.tagIds?.length ? html`<p class="help">Matching ${this.filters.tagMatch ?? 'any'} selected tags.</p>` : nothing}
       ${parseJournal(this.url.search).normalized ? html`<p class="help">Unsupported or invalid URL filters were ignored. Apply filters to update the link.</p>` : nothing}
       ${saved && /^[0-9a-f-]{36}$/i.test(saved) ? html`<p role="status">Activity saved. Your filters remain in place. <a href=${withReturn(`/activities/${saved}`, this.context)}>View saved activity</a></p>` : this.url.searchParams.get('deleted') === '1' ? html`<p role="status">Activity deleted.</p>` : nothing}
-      <p role="status" class="status">
-        ${this.loading ? (this.items.length ? 'Updating results; showing previous activities until the new results arrive.' : 'Loading activities…') : this.status}
-      </p>
       ${this.error ? html`${readError(this.error)}${this.items.length ? html`<p class="help">Showing previously loaded activities. These may not match the current filters.</p>` : nothing}<button @click=${() => this.load()}>Retry activities</button>` : nothing}
       ${[...groups].map(
         ([date, items]) =>
@@ -389,36 +535,6 @@ export class ActivityJournalPage extends LitElement {
           : nothing
       }
       ${this.loaded && this.items.length ? html`<div class="paging">${this.moreError ? readError(this.moreError) : nothing}<button id="load-more" ?disabled=${this.loading || this.moreLoading || !!this.error} aria-disabled=${this.nextOffset === null} @click=${() => this.load(true)}>${this.moreLoading ? 'Loading more…' : this.moreError ? 'Retry loading more' : this.nextOffset === null ? 'All activities loaded' : 'Load more'}</button><span role="status" class="help">${this.moreLoading ? 'Loading the next page. Current activities remain visible.' : ''}</span></div>` : nothing}
-      <dialog
-        class="filters"
-        aria-labelledby="filters-title"
-        @keydown=${trapDialogFocus}
-        @cancel=${(e: Event) => {
-          e.preventDefault();
-          this.closeFilters();
-        }}
-      >
-        <h2 id="filters-title">Filter journal</h2>
-        ${
-          this.referencesLoading
-            ? html`<p role="status">Loading filter options…</p>
-                <button @click=${this.closeFilters}>Close filters</button>`
-            : this.referenceError
-              ? html`${readError(this.referenceError)}<button
-                    @click=${() => this.loadReferences()}
-                  >
-                    Retry filter options</button
-                  ><button @click=${this.closeFilters}>Close filters</button>`
-              : html`<journal-filters
-                  .filters=${this.filters}
-                  .kinds=${this.kinds}
-                  .tags=${this.tags}
-                  .api=${this.api}
-                  @apply-filters=${(e: CustomEvent<Filters>) => this.apply(e.detail)}
-                  @cancel-filters=${this.closeFilters}
-                ></journal-filters>`
-        }
-      </dialog>
       ${
         this.deleting
           ? html`<activity-delete-dialog
@@ -433,6 +549,6 @@ export class ActivityJournalPage extends LitElement {
           : nothing
       }`;
   }
-  static override styles = journalStyles;
+  static override styles = journalPageStyles;
 }
 customElements.define('activity-journal-page', ActivityJournalPage);

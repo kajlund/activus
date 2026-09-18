@@ -19,7 +19,7 @@ import { activityIcon } from '../activity-kinds/icons.js';
 import { journalDate, startTime } from '../journal/format.js';
 import { referenceText, tagsView } from '../journal/presentation.js';
 import { journalStyles } from '../journal/styles.js';
-import { GoalsPage } from './page.js';
+import { goalStyles } from './styles.js';
 import {
   archiveConfirmation,
   goalValue,
@@ -436,20 +436,7 @@ export class GoalDetailPage extends LitElement {
                       <button @click=${this.refreshProgress}>
                         Refresh goal
                       </button>
-                      ${!d.goal.isArchived ? html`<a class="primary" href=${`/goals/${d.goal.id}/edit?returnTo=${encodeURIComponent(this.detailPath)}`}>Edit goal</a>` : nothing}<button
-                        class="lifecycle-action"
-                        ?disabled=${this.busy}
-                        @click=${(e: Event) => {
-                          this.trigger = e.currentTarget as HTMLElement;
-                          if (d.goal.isArchived) void this.changeArchive();
-                          else {
-                            this.actionError = undefined;
-                            this.confirming = true;
-                          }
-                        }}
-                      >
-                        ${d.goal.isArchived ? 'Restore goal' : 'Archive goal'}
-                      </button>
+                      ${!d.goal.isArchived ? html`<a class="primary" href=${`/goals/${d.goal.id}/edit?returnTo=${encodeURIComponent(this.detailPath)}`}>Edit goal</a>` : nothing}
                     </div>
                   </header>
                   <p role="status">
@@ -473,26 +460,57 @@ export class GoalDetailPage extends LitElement {
                   </section>
                   <section aria-labelledby="definition-title">
                     <h2 id="definition-title">What counts and when</h2>
-                    <p class="scope">
-                      ${activityIcon(d.iconName)}
-                      ${d.kindName}${d.variantName ? ` · ${d.variantName}` : ''}
-                    </p>
-                    <p>
-                      ${d.goal.targetType === 'activity_count' ? 'Complete' : 'Record a total of'}
-                      ${goalValue(d, d.displayTarget)}${d.measurementName ? ` of ${d.measurementName}` : ''}
-                      ${d.goal.scheduleMode === 'recurring' ? `each calendar ${d.goal.recurrencePeriod}` : 'over the full goal range'}.
-                    </p>
-                    <p>
-                      ${d.tagNames.length ? `Every activity must have all of these tags: ${d.tagNames.join(', ')}.` : 'No tags are required.'}
-                    </p>
-                    <p>
-                      ${journalDate(d.goal.startDate)} through
-                      ${journalDate(d.goal.endDate)}, including both dates.
-                    </p>
+                    <dl class="definition-grid">
+                      <div>
+                        <dt>Activity</dt>
+                        <dd class="scope">
+                          ${activityIcon(d.iconName)}<span
+                            >${d.kindName}${d.variantName ? ' · ' + d.variantName : ''}</span
+                          >
+                        </dd>
+                      </div>
+                      <div>
+                        <dt>Target</dt>
+                        <dd>
+                          ${goalValue(d, d.displayTarget)}${d.measurementName ? ' of ' + d.measurementName : ''}${d.goal.scheduleMode === 'recurring' ? ' each calendar ' + d.goal.recurrencePeriod : ' over the full goal range'}
+                        </dd>
+                      </div>
+                      <div>
+                        <dt>Date range</dt>
+                        <dd>
+                          ${journalDate(d.goal.startDate)} through
+                          ${journalDate(d.goal.endDate)}, including both dates.
+                        </dd>
+                      </div>
+                      ${
+                        d.tagNames.length
+                          ? html`<div>
+                              <dt>All required tags</dt>
+                              <dd>${d.tagNames.join(', ')}</dd>
+                            </div>`
+                          : nothing
+                      }
+                    </dl>
                     ${d.goal.scheduleMode === 'recurring' ? html`<p class="muted">Boundary periods use only the dates inside the goal range.</p>` : nothing}
-                    ${d.archivedReferences.length ? html`<p class="muted">Archived configuration retained: ${d.archivedReferences.join(', ')}.</p>` : nothing}
+                    ${d.archivedReferences.length ? html`<p class="warning">Archived configuration retained: ${d.archivedReferences.join(', ')}.</p>` : nothing}
                   </section>
                   ${d.goal.scheduleMode === 'recurring' ? this.history(d) : nothing}${this.activities(d)}
+                  <footer class="lifecycle-footer">
+                    <button
+                      class="lifecycle-action"
+                      ?disabled=${this.busy}
+                      @click=${(e: Event) => {
+                        this.trigger = e.currentTarget as HTMLElement;
+                        if (d.goal.isArchived) void this.changeArchive();
+                        else {
+                          this.actionError = undefined;
+                          this.confirming = true;
+                        }
+                      }}
+                    >
+                      ${d.goal.isArchived ? 'Restore goal' : 'Archive goal'}
+                    </button>
+                  </footer>
                   ${
                     this.confirming
                       ? archiveConfirmation(
@@ -511,7 +529,7 @@ export class GoalDetailPage extends LitElement {
   }
   static override styles = [
     journalStyles,
-    GoalsPage.styles,
+    goalStyles,
     css`
       .back {
         padding-left: 0;
@@ -542,7 +560,7 @@ export class GoalDetailPage extends LitElement {
         max-width: 72ch;
       }
       .numeric {
-        font-size: 20px;
+        font-size: var(--font-size-metric);
       }
       progress {
         max-width: 640px;
@@ -552,6 +570,11 @@ export class GoalDetailPage extends LitElement {
         border: 0;
       }
       .period-choice {
+        grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr) minmax(0, 0.8fr);
+        align-items: center;
+        background: transparent;
+        border-color: transparent;
+        border-bottom-color: var(--color-border);
         width: 100%;
         display: grid;
         gap: 6px;
@@ -586,6 +609,11 @@ export class GoalDetailPage extends LitElement {
       }
       section > button {
         margin-top: 12px;
+      }
+      @media (max-width: 700px) {
+        .period-choice {
+          grid-template-columns: minmax(0, 1fr);
+        }
       }
       dialog p {
         overflow-wrap: anywhere;

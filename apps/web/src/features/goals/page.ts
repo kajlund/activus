@@ -1,4 +1,6 @@
-import { LitElement, css, html, nothing, type PropertyValues } from 'lit';
+import { LitElement, html, nothing, type PropertyValues } from 'lit';
+import { ChevronRight, createElement } from 'lucide';
+import { goalStyles } from './styles.js';
 import { repeat } from 'lit/directives/repeat.js';
 import type {
   GoalOverviewItem,
@@ -173,12 +175,12 @@ export class GoalsPage extends LitElement {
   }
   private row(item: GoalOverviewItem) {
     const g = item.goal;
-    return html`<li>
+    return html`<li class="goal-row">
       <div class="row-head">
         <div class="definition">
           <h2>
             <a class="goal-link" href=${goalDetailPath(g.id, this.view)}
-              >${g.name}</a
+              >${g.name}${createElement(ChevronRight, { width: '18', height: '18', 'aria-hidden': 'true' })}</a
             >
           </h2>
           <p class="scope">
@@ -196,6 +198,7 @@ export class GoalsPage extends LitElement {
             ${title(g.lifecycle)}
           </p>
         </div>
+        <div class="progress">${this.progress(item)}</div>
         <div class="actions">
           ${
             !g.isArchived
@@ -220,7 +223,6 @@ export class GoalsPage extends LitElement {
           }
         </div>
       </div>
-      <div class="progress">${this.progress(item)}</div>
     </li>`;
   }
   override render() {
@@ -232,7 +234,9 @@ export class GoalsPage extends LitElement {
           <h1 tabindex="-1">Goals</h1>
           <p class="muted">Keep track of what you want to work toward.</p>
         </div>
-        <a class="primary" href=${`/goals/new?view=${this.view}`}>New goal</a>
+        <a class="primary" href=${`/goals/new?view=${this.view}`}
+          >Create goal</a
+        >
       </header>
       <nav aria-label="Goal lifecycle">
         ${goalViews.map((v) => html`<a href=${goalsPath(v)} aria-current=${this.view === v ? 'page' : 'false'}>${title(v)}</a>`)}
@@ -278,213 +282,6 @@ export class GoalsPage extends LitElement {
           : nothing
       }`;
   }
-  static override styles = css`
-    :host {
-      display: block;
-      max-width: 960px;
-      margin: auto;
-    }
-    * {
-      box-sizing: border-box;
-    }
-    h1 {
-      font-size: var(--font-size-page-title);
-      margin: 0 0 8px;
-    }
-    h2 {
-      font-size: var(--font-size-component-title, 16px);
-      margin: 0 0 12px;
-      overflow-wrap: anywhere;
-    }
-    p {
-      margin: 8px 0;
-      overflow-wrap: anywhere;
-    }
-    header,
-    .row-head {
-      display: flex;
-      justify-content: space-between;
-      gap: 24px;
-      align-items: flex-start;
-    }
-    header {
-      align-items: center;
-      margin-bottom: 24px;
-    }
-    .goal-link {
-      padding: 0;
-      justify-content: flex-start;
-      color: var(--color-text);
-      text-align: left;
-      text-decoration: none;
-    }
-    .goal-link:hover {
-      text-decoration: underline;
-    }
-    .definition {
-      min-width: 0;
-    }
-    .muted,
-    .announcement {
-      color: var(--color-text-muted);
-      font-size: 13px;
-    }
-    a,
-    button {
-      color: var(--color-primary);
-      font: inherit;
-      min-height: 44px;
-      padding: 10px 14px;
-      border-radius: var(--radius-md);
-      display: inline-flex;
-      align-items: center;
-      justify-content: center;
-    }
-    button {
-      background: var(--color-surface);
-      border: 1px solid var(--color-control-border);
-      cursor: pointer;
-    }
-    button:disabled {
-      opacity: 0.65;
-      cursor: wait;
-    }
-    a:focus-visible,
-    button:focus-visible,
-    h1:focus-visible {
-      outline: 3px solid var(--color-focus);
-      outline-offset: 3px;
-    }
-    .primary {
-      background: var(--color-primary);
-      color: var(--color-surface);
-      text-decoration: none;
-      white-space: nowrap;
-    }
-    nav {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 4px;
-      border-bottom: 1px solid var(--color-border);
-      padding-bottom: 12px;
-    }
-    nav a {
-      text-decoration: none;
-    }
-    nav a[aria-current='page'] {
-      background: var(--color-primary-soft);
-      color: var(--color-primary-hover);
-      font-weight: 600;
-    }
-    ul {
-      list-style: none;
-      padding: 0;
-      margin: 0;
-    }
-    li {
-      padding: 24px 0;
-      border-bottom: 1px solid var(--color-border);
-    }
-    .actions {
-      display: flex;
-      gap: 8px;
-      flex-wrap: wrap;
-      flex-shrink: 0;
-    }
-    .scope {
-      display: flex;
-      align-items: center;
-      gap: 8px;
-    }
-    .scope svg {
-      flex-shrink: 0;
-    }
-    .tags {
-      display: flex;
-      gap: 6px;
-      flex-wrap: wrap;
-    }
-    .tags span,
-    .achieved {
-      background: var(--color-surface-subtle);
-      border-radius: var(--radius-pill);
-      padding: 3px 8px;
-      font-size: 13px;
-    }
-    .progress {
-      margin-top: 16px;
-      max-width: 640px;
-    }
-    .numeric {
-      font-weight: 600;
-    }
-    progress {
-      display: block;
-      width: 100%;
-      height: 6px;
-      appearance: none;
-      border: 0;
-      border-radius: 6px;
-      overflow: hidden;
-      background: var(--color-border);
-    }
-    progress::-webkit-progress-bar {
-      background: var(--color-border);
-    }
-    progress::-webkit-progress-value {
-      background: var(--color-primary);
-    }
-    progress::-moz-progress-bar {
-      background: var(--color-primary);
-    }
-    .empty {
-      padding: 32px 0;
-    }
-    dialog {
-      background: var(--color-surface);
-      color: var(--color-text);
-      border: 1px solid var(--color-border);
-      border-radius: var(--radius-lg);
-      padding: 24px;
-      width: min(460px, calc(100vw - 32px));
-      max-height: calc(100dvh - 32px);
-      overflow: auto;
-    }
-    dialog::backdrop {
-      background: #0008;
-    }
-    dialog .actions {
-      margin-top: 24px;
-      justify-content: flex-end;
-    }
-    .sr {
-      position: absolute;
-      width: 1px;
-      height: 1px;
-      overflow: hidden;
-      clip-path: inset(50%);
-    }
-    @media (max-width: 600px) {
-      header,
-      .row-head {
-        flex-direction: column;
-        align-items: flex-start;
-        gap: 12px;
-      }
-      .actions {
-        width: 100%;
-      }
-      header .primary {
-        align-self: flex-start;
-      }
-      nav a {
-        flex: 1;
-        padding: 10px 8px;
-      }
-      .scope {
-        align-items: flex-start;
-      }
-    }
-  `;
+  static override styles = goalStyles;
 }
 customElements.define('goals-page', GoalsPage);

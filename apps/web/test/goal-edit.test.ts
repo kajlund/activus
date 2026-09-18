@@ -394,3 +394,51 @@ it('never stacks the recalculation and unsaved-change confirmations', async () =
   expect(page.leaving).toBe(false);
   expect(page.shadowRoot!.querySelectorAll('dialog')).toHaveLength(1);
 });
+
+it('shows only relevant controls and retains inputs when target and schedule choices change', async () => {
+  const { page } = await mountCreate();
+  const root = page.shadowRoot!;
+  const value = root.querySelector<HTMLInputElement>('[name=value]')!;
+  value.value = '12.5';
+  const choose = async (name: string, selected: string) => {
+    root
+      .querySelector<HTMLInputElement>(
+        '[name=' + name + '][value=' + selected + ']',
+      )!
+      .click();
+    await settle(page);
+  };
+  await choose('targetType', 'total_duration');
+  expect(value.disabled).toBe(true);
+  const hours = root.querySelector<HTMLInputElement>('[name=hours]')!;
+  hours.value = '2';
+  await choose('targetType', 'measurement_total');
+  expect(value.value).toBe('12.5');
+  expect(
+    root.querySelector<HTMLSelectElement>('[name=measurement]')!.required,
+  ).toBe(true);
+  await choose('targetType', 'total_duration');
+  expect(hours.value).toBe('2');
+  const recurrence =
+    root.querySelector<HTMLSelectElement>('[name=recurrence]')!;
+  expect(recurrence.disabled).toBe(true);
+  await choose('schedule', 'recurring');
+  recurrence.value = 'month';
+  await choose('schedule', 'fixed');
+  await choose('schedule', 'recurring');
+  expect(recurrence.value).toBe('month');
+});
+it('keeps exact duration seconds on a name-only edit without recalculation', async () => {
+  const stored = { ...goal, targetValue: '5407' };
+  const service = api(vi.fn().mockResolvedValue(stored), stored);
+  const { page } = await mount(service);
+  page.shadowRoot!.querySelector<HTMLInputElement>('[name=name]')!.value =
+    'New name';
+  submit(page);
+  await settle(page);
+  expect(service.updateGoal).toHaveBeenCalledWith(
+    id,
+    expect.objectContaining({ targetValue: 5407 }),
+  );
+  expect(page.confirming).toBe(false);
+});

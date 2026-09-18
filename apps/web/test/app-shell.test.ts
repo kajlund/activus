@@ -5,6 +5,8 @@ import { navigate } from '../src/routes/navigation.js';
 afterEach(() => {
   document.body.replaceChildren();
   history.replaceState(null, '', '/');
+  localStorage.removeItem('activus-theme');
+  delete document.documentElement.dataset.theme;
 });
 
 it('does not create a history entry when a route guard rejects internal navigation', async () => {
@@ -69,4 +71,28 @@ it('moves keyboard focus to the main area from the skip link', async () => {
   await app.updateComplete;
   app.shadowRoot?.querySelector<HTMLAnchorElement>('.skip')?.click();
   expect(app.shadowRoot?.activeElement?.tagName).toBe('MAIN');
+});
+
+it('toggles and persists a boolean theme without changing routes', async () => {
+  localStorage.setItem('activus-theme', 'light');
+  const app = new ActivusApp();
+  document.body.append(app);
+  await app.updateComplete;
+  const toggle =
+    app.shadowRoot!.querySelector<HTMLButtonElement>('.theme-toggle')!;
+  expect(toggle.getAttribute('aria-label')).toBe('Switch to dark theme');
+  expect(app.shadowRoot!.querySelector('select')).toBeNull();
+  toggle.click();
+  await app.updateComplete;
+  expect(document.documentElement.dataset.theme).toBe('dark');
+  expect(document.documentElement.style.colorScheme).toBe('dark');
+  expect(localStorage.getItem('activus-theme')).toBe('dark');
+  app.remove();
+  const reloaded = new ActivusApp();
+  document.body.append(reloaded);
+  await reloaded.updateComplete;
+  expect(
+    reloaded.shadowRoot!.querySelector('.theme-toggle')!.getAttribute('title'),
+  ).toBe('Switch to light theme');
+  expect(location.pathname).toBe('/');
 });

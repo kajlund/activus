@@ -1,5 +1,6 @@
 import { beforeEach, afterEach, it, expect, vi } from 'vitest';
 import type { LitElement } from 'lit';
+import { JournalEntryDetails } from '../src/features/journal/entry-details.js';
 import { ActivityJournalPage } from '../src/features/journal/page.js';
 import { ActivityDetailPage } from '../src/features/journal/detail.js';
 import { JournalFilters } from '../src/features/journal/filters.js';
@@ -21,6 +22,7 @@ import {
 
 let f: Awaited<ReturnType<typeof journalFixture>>;
 beforeEach(async () => {
+  HTMLElement.prototype.scrollIntoView = vi.fn();
   f = await journalFixture();
   history.replaceState(null, '', '/activities');
   HTMLDialogElement.prototype.showModal = function () {
@@ -137,7 +139,7 @@ it('groups ordered summaries and displays real zero values without detail N+1 re
   ).toBe('2026-09-07');
   expect(text(el)).toContain('0 s');
   expect(text(el)).toContain('0\u00a0km');
-  expect(text(el)).toContain('Notes recorded');
+  expect(text(el)).not.toContain('Notes recorded');
   expect(get).not.toHaveBeenCalled();
   expect(list).toHaveBeenCalledTimes(1);
 });
@@ -421,9 +423,11 @@ it('delete confirmation keeps data on failure, prevents double deletion and uses
   expect(remove).toHaveBeenCalledTimes(2);
   expect(f.deps.rows.has(f.activities[0]!.id)).toBe(false);
 });
-it('reloads summaries after deletion and returns focus to the journal heading', async () => {
+it('removes the deleted row in place, focuses its neighbor and preserves pagination', async () => {
+  const read = vi.spyOn(f.api, 'listActivities');
   const el = await page();
-  button(el, 'Delete activity').click();
+  const entry = await expand(el);
+  button(entry, 'Delete activity').click();
   await settle(el);
   const dialog = el.shadowRoot!.querySelector<ActivityDeleteDialog>(
     'activity-delete-dialog',
@@ -433,8 +437,14 @@ it('reloads summaries after deletion and returns focus to the journal heading', 
   await settle(dialog);
   await settle(el);
   expect(f.deps.rows.size).toBe(29);
-  expect(el.shadowRoot!.querySelectorAll('.row')).toHaveLength(25);
-  expect(el.shadowRoot!.activeElement).toBe(el.shadowRoot!.querySelector('h1'));
+  expect(el.shadowRoot!.querySelectorAll('.row')).toHaveLength(24);
+  expect(el.shadowRoot!.activeElement).toBe(
+    el.shadowRoot!.querySelector('.row-toggle'),
+  );
+  button(el, 'Load more').click();
+  await settle(el);
+  expect(el.shadowRoot!.querySelectorAll('.row')).toHaveLength(29);
+  expect(read.mock.lastCall?.[1]?.aborted).toBe(false);
 });
 it('retains archived references as filter options and does not hide their activities', async () => {
   f.deps.activityKinds.rows.get(f.kind.id)!.archivedAt = new Date();
@@ -564,4 +574,137 @@ it('keeps this-week dates in the correct months across a month boundary', async 
   } finally {
     vi.useRealTimers();
   }
+});
+
+async function expand(el: ActivityJournalPage, index = 0) {
+  el.shadowRoot!.querySelectorAll<HTMLButtonElement>('.row-toggle')[
+    index
+  ]!.click();
+  await settle(el);
+  const entry = el.shadowRoot!.querySelector<JournalEntryDetails>(
+    'journal-entry-details',
+  )!;
+  await settle(entry);
+  return entry;
+}
+it('opens one semantic inline panel, fetches on demand, and keeps it through harmless updates', async () => {
+  const read = vi.spyOn(f.api, 'getActivity');
+  const el = await page();
+  expect(read).not.toHaveBeenCalled();
+  const first = await expand(el);
+  expect(read).toHaveBeenCalledTimes(1);
+  expect(text(first)).toContain('Along the river');
+  expect(text(first)).toContain('Journal date');
+  const toggle =
+    el.shadowRoot!.querySelector<HTMLButtonElement>('.row-toggle')!;
+  expect(toggle.getAttribute('aria-expanded')).toBe('true');
+  expect(
+    el.shadowRoot!.getElementById(toggle.getAttribute('aria-controls')!)
+      ?.hidden,
+  ).toBe(false);
+  el.requestUpdate();
+  await settle(el);
+  expect(el.shadowRoot!.querySelector('journal-entry-details')).toBe(first);
+  expect(read).toHaveBeenCalledTimes(1);
+  await expand(el, 1);
+  expect(toggle.getAttribute('aria-expanded')).toBe('false');
+  expect(el.shadowRoot!.querySelectorAll('journal-entry-details')).toHaveLength(
+    1,
+  );
+  expect(read).toHaveBeenCalledTimes(2);
+  el.shadowRoot!.querySelectorAll<HTMLButtonElement>('.row-toggle')[1]!.click();
+  await settle(el);
+  expect(el.shadowRoot!.querySelector('journal-entry-details')).toBeNull();
+});
+it('contains detail failures and retries without changing journal results', async () => {
+  vi.spyOn(f.api, 'getActivity').mockRejectedValueOnce(
+    new ClientError('network', 'NETWORK_ERROR'),
+  );
+  const el = await page();
+  const entry = await expand(el);
+  expect(text(entry)).toContain('server could not be reached');
+  expect(el.shadowRoot!.querySelectorAll('.row')).toHaveLength(25);
+  button(entry, 'Retry activity details').click();
+  await settle(entry);
+  expect(text(entry)).toContain('Along the river');
+});
+it('ignores delayed detail responses after opening another row', async () => {
+  let resolve!: (a: (typeof f.activities)[0]) => void;
+  let signal: AbortSignal | undefined;
+  vi.spyOn(f.api, 'getActivity').mockImplementationOnce((_id, s) => {
+    signal = s;
+    return new Promise((done) => {
+      resolve = done;
+    });
+  });
+  const el = await page();
+  const first = await expand(el);
+  expect(text(first)).toContain('Loading activity details');
+  const second = await expand(el, 1);
+  expect(signal?.aborted).toBe(true);
+  resolve(f.activities[0]!);
+  await settle(second);
+  expect(text(second)).not.toContain('Along the river');
+});
+it('retains expansion under matching filters and closes it when excluded', async () => {
+  const el = await page();
+  await expand(el);
+  el.route = journalPath({ activityKindId: f.kind.id });
+  await settle(el);
+  expect(
+    el.shadowRoot!.querySelector('[aria-expanded="true"].row-toggle'),
+  ).not.toBeNull();
+  el.route = journalPath({ dateTo: '2020-01-01' });
+  await settle(el);
+  expect(el.shadowRoot!.querySelector('journal-entry-details')).toBeNull();
+});
+it('restores an edited entry beyond the first page and keeps safe filter context', async () => {
+  const id = f.activities[27]!.id;
+  const el = await page('/activities?dateFrom=2026-01-01&expanded=' + id);
+  const entry = el.shadowRoot!.querySelector<JournalEntryDetails>(
+    'journal-entry-details',
+  )!;
+  await settle(entry);
+  expect(entry.activityId).toBe(id);
+  expect(el.shadowRoot!.querySelectorAll('.row')).toHaveLength(30);
+  const edit = entry.shadowRoot!.querySelector<HTMLAnchorElement>('a.button')!;
+  expect(new URL(edit.href).searchParams.get('returnTo')).toBe(
+    '/activities?dateFrom=2026-01-01&expanded=' + id,
+  );
+  expect(parseJournal('?expanded=' + id).normalized).toBe(false);
+  expect(safeReturn('/activities?expanded=invalid')).toBe('/activities');
+});
+
+it('keeps matching-goal links and their retry inside the open activity', async () => {
+  const activityGoals = vi
+    .fn()
+    .mockRejectedValueOnce(new Error('Unavailable'))
+    .mockResolvedValue({
+      items: [
+        {
+          id: '11111111-1111-4111-8111-111111111111',
+          name: 'Weekly walks',
+          lifecycle: 'ended',
+          period: { startDate: '2026-09-07', endDate: '2026-09-13' },
+        },
+      ],
+      pagination: { limit: 25, offset: 0, hasMore: false, nextOffset: null },
+    });
+  f.api.activityGoals = activityGoals;
+  const el = await page();
+  const entry = await expand(el);
+  expect(text(entry)).toContain('Matching goals unavailable');
+  expect(entry.shadowRoot!.querySelector('a.button')?.textContent).toContain(
+    'Edit activity',
+  );
+  button(entry, 'Retry goals').click();
+  await settle(entry);
+  expect(
+    entry.shadowRoot!.querySelector('.matching-goal')?.getAttribute('href'),
+  ).toBe(
+    '/goals/11111111-1111-4111-8111-111111111111?view=ended&period=2026-09-07',
+  );
+  expect(
+    el.shadowRoot!.querySelector('.row-toggle')?.getAttribute('aria-expanded'),
+  ).toBe('true');
 });

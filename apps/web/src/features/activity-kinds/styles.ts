@@ -72,7 +72,7 @@ export const managementStyles = css`
   }
   .primary {
     background: var(--color-primary);
-    color: var(--color-surface);
+    color: var(--color-on-primary);
     border-color: var(--color-primary);
   }
   .primary:hover {
@@ -110,6 +110,15 @@ export const managementStyles = css`
   }
   label {
     display: block;
+  }
+  [aria-invalid='true'] {
+    border-color: var(--color-error) !important;
+  }
+  input:disabled,
+  select:disabled,
+  textarea:disabled {
+    background: var(--color-control-disabled);
+    color: var(--color-text-disabled);
   }
   .field {
     display: grid;

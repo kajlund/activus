@@ -123,33 +123,6 @@ export const journalStyles = [
     .metadata {
       overflow-wrap: anywhere;
     }
-    .row details {
-      flex-shrink: 0;
-      position: relative;
-    }
-    .row summary {
-      cursor: pointer;
-      min-width: 44px;
-      min-height: 44px;
-      padding: var(--space-3);
-      border-radius: var(--radius-md);
-    }
-    .menu {
-      position: absolute;
-      right: 0;
-      z-index: 2;
-      display: grid;
-      width: 160px;
-      padding: var(--space-2);
-      background: var(--color-surface);
-      border: 1px solid var(--color-border);
-      border-radius: var(--radius-md);
-      box-shadow: var(--shadow-md);
-    }
-    .menu a,
-    .menu button {
-      justify-content: flex-start;
-    }
     .paging {
       margin: var(--space-6) 0;
       display: grid;
@@ -191,10 +164,6 @@ export const journalStyles = [
       }
       .row {
         gap: var(--space-2);
-      }
-      .row summary {
-        font-size: var(--font-size-small);
-        padding: var(--space-2);
       }
       dialog.filters {
         width: 100%;

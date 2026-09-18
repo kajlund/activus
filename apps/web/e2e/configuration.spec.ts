@@ -71,15 +71,23 @@ test('create and edit a kind, manage variants and refresh a detail deep link', a
     page.getByRole('heading', { name: 'Cycling', exact: true }),
   ).toBeVisible();
   await expect(page.getByText('Treadmill', { exact: true })).toBeVisible();
-  if (info.project.name.startsWith('mobile'))
-    await page.getByText('Navigation', { exact: true }).click();
+  if (
+    await page
+      .getByRole('button', { name: 'Navigation', exact: true })
+      .isVisible()
+  )
+    await page.getByRole('button', { name: 'Navigation', exact: true }).click();
   await expect(
     page
       .getByRole('navigation', { name: 'Primary' })
       .getByRole('link', { name: 'Activity kinds' }),
   ).toHaveAttribute('aria-current', 'page');
-  if (info.project.name.startsWith('mobile'))
-    await page.getByText('Navigation', { exact: true }).click();
+  if (
+    await page
+      .getByRole('button', { name: 'Navigation', exact: true })
+      .isVisible()
+  )
+    await page.getByRole('button', { name: 'Navigation', exact: true }).click();
   await noOverflow(page);
   await page.screenshot({
     path: info.outputPath('detail.png'),

@@ -6,6 +6,56 @@ import {
   type MeasurementDefinition,
 } from '@activus/contracts';
 
+// Only the ordinary configured Duration aliases the common activity field.
+// Moving time, lap time and other specialised duration definitions stay separate.
+export function isOverallDuration(d: { name: string; valueType: string }) {
+  return (
+    d.valueType === 'duration' && d.name.trim().toLowerCase() === 'duration'
+  );
+}
+
+const activityClock = new Intl.DateTimeFormat('sv-SE', {
+  timeZone: 'Europe/Helsinki',
+  year: 'numeric',
+  month: '2-digit',
+  day: '2-digit',
+  hour: '2-digit',
+  minute: '2-digit',
+  hourCycle: 'h23',
+});
+function helsinkiLocal(date: Date) {
+  const parts = Object.fromEntries(
+    activityClock.formatToParts(date).map((p) => [p.type, p.value]),
+  );
+  return `${parts.year}-${parts.month}-${parts.day}T${parts.hour}:${parts.minute}`;
+}
+export function activityStartTime(iso: string | null) {
+  return iso ? helsinkiLocal(new Date(iso)).slice(11) : '';
+}
+export function activityStartInstant(day: string, time: string): string | null {
+  if (!time) return null;
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(day) || !/^\d{2}:\d{2}$/.test(time))
+    throw new Error('Enter a valid activity date and start time.');
+  const local = `${day}T${time}`;
+  const guess = Date.parse(`${local}:00Z`);
+  if (!Number.isFinite(guess))
+    throw new Error('Enter a valid activity date and start time.');
+  const candidates = new Set<number>();
+  for (const delta of [-86400000, 0, 86400000]) {
+    const sample = guess + delta;
+    const offset =
+      Date.parse(`${helsinkiLocal(new Date(sample))}:00Z`) - sample;
+    const candidate = guess - offset;
+    if (helsinkiLocal(new Date(candidate)) === local) candidates.add(candidate);
+  }
+  if (!candidates.size)
+    throw new Error(
+      'This local time does not exist. Check the date and daylight-saving time change.',
+    );
+  // Consistently use the first occurrence of a repeated fall-back time.
+  return new Date(Math.min(...candidates)).toISOString();
+}
+
 // Decimal arithmetic at the input boundary: never round a user's value to make
 // it fit a definition. Precision and bounds are defined in canonical units.
 function decimal(raw: string) {

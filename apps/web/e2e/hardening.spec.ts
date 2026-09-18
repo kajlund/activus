@@ -1,3 +1,4 @@
+import { editorSection } from './editor-section.js';
 import { test, expect, type Page, type TestInfo } from '@playwright/test';
 import AxeBuilder from '@axe-core/playwright';
 import { journalFixture } from '../test/support/journal.js';
@@ -8,6 +9,21 @@ async function setup(page: Page, count = 2) {
   await page.route('**/api/**', async (route) => {
     const request = route.request();
     const url = new URL(request.url());
+    // This activity fixture has no goal repository; model its empty matching goals.
+    if (url.pathname.startsWith('/api/v1/goals/for-activity/')) {
+      await route.fulfill({
+        json: {
+          items: [],
+          pagination: {
+            limit: 10,
+            offset: 0,
+            hasMore: false,
+            nextOffset: null,
+          },
+        },
+      });
+      return;
+    }
     const response = await f.app.request(url.pathname + url.search, {
       method: request.method(),
       headers: { 'Content-Type': 'application/json' },
@@ -100,24 +116,22 @@ test('core journey joins configuration, entry, filters, editing and archived his
   await dialog.getByLabel('Name', { exact: true }).fill('Recovery walk');
   await dialog.getByRole('button', { name: 'Create tag', exact: true }).click();
   await expect(dialog).not.toBeVisible();
-  await page
-    .getByRole('link', { name: 'Record activity', exact: true })
-    .click();
-  await page
-    .getByLabel('Activity kind (required)', { exact: true })
-    .selectOption(kindId);
-  await page
-    .getByLabel('Variant (optional)', { exact: true })
-    .selectOption({ label: 'Treadmill' });
-  await page
-    .getByLabel('Activity date (required)', { exact: true })
-    .fill('2026-01-15');
-  await page.getByLabel('Distance (required)', { exact: true }).fill('2.5');
+  await page.goto('/activities');
+  await page.getByRole('link', { name: 'New activity', exact: true }).click();
+  await editorSection(page, 'activity');
+  await page.locator(`input[name="activityKind"][value="${kindId}"]`).check();
+  await editorSection(page, 'activity');
+  await page.getByRole('radio', { name: 'Treadmill', exact: true }).check();
+  await editorSection(page, 'timing');
+  await page.getByLabel('Activity date *', { exact: true }).fill('2026-01-15');
+  await editorSection(page, 'measurements');
+  await page.getByLabel('Distance *', { exact: true }).fill('2.5');
+  await editorSection(page, 'context');
   await page.getByLabel('Recovery walk', { exact: true }).check();
   await capture(page, info, '02-entry');
   await accessibility(page);
   await page
-    .getByRole('button', { name: 'Save activity', exact: true })
+    .getByRole('button', { name: /^Save (activity|changes)$/, exact: true })
     .click();
   await expect(
     page.getByRole('link', { name: 'Edit activity', exact: true }),
@@ -138,11 +152,12 @@ test('core journey joins configuration, entry, filters, editing and archived his
   await accessibility(page);
   await page.locator('activity-journal-page .title').click();
   await page.getByRole('link', { name: 'Edit activity', exact: true }).click();
+  await editorSection(page, 'context');
   await page
-    .getByLabel('Notes (optional)', { exact: true })
+    .getByLabel('Notes', { exact: true })
     .fill('A factual observation.');
   await page
-    .getByRole('button', { name: 'Save activity', exact: true })
+    .getByRole('button', { name: /^Save (activity|changes)$/, exact: true })
     .click();
   await expect(
     page.getByText('A factual observation.', { exact: true }),
@@ -154,13 +169,17 @@ test('core journey joins configuration, entry, filters, editing and archived his
   );
   await f.api.archiveKind(kindId);
   await page.reload();
-  await expect(page.locator('activity-detail-page')).toContainText('archived');
+  await expect(page.locator('journal-entry-details')).toContainText('archived');
   // Installed browsers may retain OS regional number formatting even when
   // their requested language is en-US. Assert the exact localized quantity.
   const distanceText = await page.evaluate(
     () => `${new Intl.NumberFormat().format(2.5)} km`,
   );
-  await expect(page.getByText(distanceText, { exact: true })).toBeVisible();
+  await expect(
+    page
+      .locator('journal-entry-details')
+      .getByText(distanceText, { exact: true }),
+  ).toBeVisible();
   await capture(page, info, '04-historical-detail');
   await accessibility(page);
   expect(errors).toEqual([]);
@@ -171,20 +190,19 @@ test('dirty configuration cancel, pending mutation and browser history preserve 
 }, info) => {
   const f = await setup(page);
   await page.goto('/activities');
+  await page.getByRole('link', { name: 'New activity', exact: true }).click();
+  await editorSection(page, 'activity');
   await page
-    .getByRole('link', { name: 'Record activity', exact: true })
-    .click();
-  await page
-    .getByLabel('Activity kind (required)', { exact: true })
-    .selectOption(f.kind.id);
+    .locator(`input[name="activityKind"][value="${f.kind.id}"]`)
+    .check();
   page.once('dialog', (d) => d.dismiss());
   await page.goBack();
-  await expect(page).toHaveURL(/\/activities\/new$/);
+  await expect(page).toHaveURL(/\/activities\/new(?:\?|$)/);
   page.once('dialog', (d) => d.accept());
   await page.goBack();
   await expect(page).toHaveURL(/\/activities$/);
   await page.goForward();
-  await expect(page).toHaveURL(/\/activities\/new$/);
+  await expect(page).toHaveURL(/\/activities\/new(?:\?|$)/);
   await page.goto(`/activity-kinds/${f.kind.id}`);
   await page
     .getByRole('button', { name: 'Edit activity kind', exact: true })
@@ -259,10 +277,12 @@ test('routes, mobile navigation, reflow, zoom and accessible forms', async ({
       await expect(
         page.getByRole('heading', { name: heading!, exact: true }).first(),
       ).toBeVisible();
-      if (name === 'entry')
+      if (name === 'entry') {
+        await editorSection(page, 'activity');
         await page
-          .getByLabel('Activity kind (required)', { exact: true })
-          .selectOption(f.kind.id);
+          .locator(`input[name="activityKind"][value="${f.kind.id}"]`)
+          .check();
+      }
       await capture(page, info, `${width}-${name}`);
       if (width === 320) await accessibility(page);
     }
@@ -283,13 +303,15 @@ test('routes, mobile navigation, reflow, zoom and accessible forms', async ({
   await expect(page).toHaveTitle('Journal · Activus');
   await expect(page.getByRole('main')).toBeFocused();
   await page.setViewportSize({ width: 320, height: 844 });
-  await page.getByText('Navigation', { exact: true }).click();
+  await page.getByRole('button', { name: 'Navigation', exact: true }).click();
   await page
     .getByRole('navigation')
-    .getByRole('link', { name: 'Settings', exact: true })
+    .getByRole('link', { name: 'Goals', exact: true })
     .focus();
   await page.keyboard.press('Escape');
-  await expect(page.getByText('Navigation', { exact: true })).toBeFocused();
+  await expect(
+    page.getByRole('button', { name: 'Navigation', exact: true }),
+  ).toBeFocused();
   await expect(page.getByRole('navigation')).not.toBeVisible();
 });
 test.use({ timezoneId: 'Europe/Helsinki', locale: 'en-US' });

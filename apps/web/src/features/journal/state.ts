@@ -56,6 +56,7 @@ export function parseJournal(search: string): {
   const cleaned = new URLSearchParams(params);
   cleaned.delete('saved');
   cleaned.delete('deleted');
+  if (expandedActivity(search)) cleaned.delete('expanded');
   canonical.sort();
   cleaned.sort();
   return { filters, normalized: canonical.toString() !== cleaned.toString() };
@@ -82,8 +83,11 @@ export function safeReturn(raw: string | null): string {
   try {
     const url = new URL(raw, 'http://local');
     if (url.origin !== 'http://local') return '/activities';
-    if (url.pathname === '/activities')
-      return journalPath(parseJournal(url.search).filters);
+    if (url.pathname === '/activities') {
+      const path = journalPath(parseJournal(url.search).filters);
+      const id = expandedActivity(url.search);
+      return id ? expandedReturn(path, id) : path;
+    }
     if (/^\/activities\/[0-9a-f-]{36}$/i.test(url.pathname)) {
       const back = url.searchParams.get('returnTo');
       const goalBack = safeGoalDetailReturn(back);
@@ -106,5 +110,20 @@ export function withNotice(
 ) {
   const url = new URL(path, 'http://local');
   url.searchParams.set(key, value);
+  return url.pathname + url.search;
+}
+
+// UI-only return state; never forwarded to the list API.
+export function expandedActivity(search: string): string | undefined {
+  const params = new URLSearchParams(search);
+  const id = params.get('expanded') ?? params.get('saved');
+  return id &&
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)
+    ? id
+    : undefined;
+}
+export function expandedReturn(path: string, id: string) {
+  const url = new URL(path, 'http://local');
+  url.searchParams.set('expanded', id);
   return url.pathname + url.search;
 }

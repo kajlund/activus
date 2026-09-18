@@ -1,3 +1,8 @@
+import {
+  accordionHeader,
+  accordionStyles,
+} from '../../components/accordion.js';
+import { Clock, Ruler, NotebookPen, createElement } from 'lucide';
 import { LitElement, css, html, nothing, type PropertyValues } from 'lit';
 import { repeat } from 'lit/directives/repeat.js';
 import {
@@ -28,8 +33,9 @@ import {
   durationSeconds,
   splitDuration,
   localDate,
-  localInstant,
-  startInstant,
+  activityStartTime,
+  activityStartInstant,
+  isOverallDuration,
   measurementInput,
 } from './values.js';
 import './tag-picker.js';
@@ -44,7 +50,6 @@ type Draft = {
   activityVariantId: string;
   activityDate: string;
   start: string;
-  occurrence: 'earlier' | 'later';
   hours: string;
   minutes: string;
   seconds: string;
@@ -59,7 +64,6 @@ const fresh = (): Draft => ({
   activityVariantId: '',
   activityDate: localDate(),
   start: '',
-  occurrence: 'earlier',
   hours: '',
   minutes: '',
   seconds: '',
@@ -85,6 +89,8 @@ export class ActivityEditorPage extends LitElement {
     definitions: { state: true },
     variants: { state: true },
     status: { state: true },
+    openSection: { state: true },
+    kindSearch: { state: true },
   };
   route = location.pathname + location.search;
   api: EditorApi = configurationApi;
@@ -106,11 +112,34 @@ export class ActivityEditorPage extends LitElement {
   private saveError: unknown;
   private errors: Record<string, string> = {};
   private status = '';
+  private openSection = 'activity';
+  private kindSearch = '';
+  private get visibleDefinitions() {
+    return this.definitions.filter((d) => !isOverallDuration(d));
+  }
+  private get durationChanged() {
+    return ['hours', 'minutes', 'seconds'].some(
+      (key) =>
+        this.draft[key as keyof Draft] !==
+        this.initialDraft[key as keyof Draft],
+    );
+  }
+  private get durationRequired() {
+    return (
+      this.definitions.some(
+        (d) => isOverallDuration(d) && d.isRequired && !d.isArchived,
+      ) && !this.original?.isPartial
+    );
+  }
   private generation = 0;
   private selectionGeneration = 0;
   private reads: AbortController | undefined;
   private selection: AbortController | undefined;
   private mutation: AbortController | undefined;
+  private historicalDuration(activity: Activity): number | null {
+    const stored = activity.measurements.find(isOverallDuration);
+    return stored?.valueType === 'duration' ? stored.canonicalValue : null;
+  }
   private get activityId() {
     return new URL(this.route, location.origin).pathname.match(
       /^\/activities\/([^/]+)\/edit$/,
@@ -185,6 +214,16 @@ export class ActivityEditorPage extends LitElement {
       ]);
       if (generation !== this.generation) return;
       this.original = activity;
+      const target = new URL(this.route, location.origin).searchParams.get(
+        'section',
+      );
+      this.openSection =
+        target &&
+        ['activity', 'timing', 'measurements', 'context'].includes(target)
+          ? target
+          : activity
+            ? ''
+            : 'activity';
       this.kinds = kinds.items.filter(
         (k) => !k.isArchived || k.id === activity?.activityKindId,
       );
@@ -196,14 +235,13 @@ export class ActivityEditorPage extends LitElement {
       this.variants = [];
       if (activity) {
         const [hours, minutes, seconds] = splitDuration(
-          activity.durationSeconds,
+          activity.durationSeconds ?? this.historicalDuration(activity),
         );
         this.draft = {
           activityKindId: activity.activityKindId,
           activityVariantId: activity.activityVariantId ?? '',
           activityDate: activity.activityDate,
-          start: localInstant(activity.startedAt),
-          occurrence: 'earlier',
+          start: activityStartTime(activity.startedAt),
           hours,
           minutes,
           seconds,
@@ -369,12 +407,28 @@ export class ActivityEditorPage extends LitElement {
   }
   private async focusError() {
     await this.updateComplete;
+    const firstSection = ['activity', 'timing', 'measurements', 'context'].find(
+      (id) => this.sectionError(id),
+    );
+    if (firstSection) {
+      this.openSection = firstSection;
+      await this.updateComplete;
+    }
     const control = this.renderRoot.querySelector<HTMLElement>(
       '[aria-invalid="true"]',
     );
+    const section = control?.closest<HTMLElement>('section[data-section]');
+    if (section) {
+      this.openSection = section.dataset.section!;
+      await this.updateComplete;
+    }
     const details = control?.closest('details');
     if (details) details.open = true;
-    control?.focus();
+    if (control) control.focus();
+    else if (firstSection)
+      this.renderRoot
+        .querySelector<HTMLElement>(`#${firstSection}-trigger`)
+        ?.focus();
   }
   private async save(e: Event) {
     e.preventDefault();
@@ -404,9 +458,9 @@ export class ActivityEditorPage extends LitElement {
       startedAt =
         this.original &&
         this.draft.start === this.initialDraft.start &&
-        this.draft.occurrence === this.initialDraft.occurrence
+        this.draft.activityDate === this.initialDraft.activityDate
           ? this.original.startedAt
-          : startInstant(this.draft.start, this.draft.occurrence);
+          : activityStartInstant(this.draft.activityDate, this.draft.start);
     } catch (error) {
       errors['start'] = (error as Error).message;
     }
@@ -420,6 +474,27 @@ export class ActivityEditorPage extends LitElement {
     const measurements: ActivityMeasurementInput[] = [];
     for (const d of this.definitions) {
       const value = this.values[d.id] ?? '';
+      if (isOverallDuration(d)) {
+        const stored = this.originalInput(d.id);
+        if (this.sameScope && !this.durationChanged && stored)
+          measurements.push(stored);
+        else if (duration !== null) {
+          if (
+            (d.minimumValue !== null && duration < d.minimumValue) ||
+            (d.maximumValue !== null && duration > d.maximumValue)
+          )
+            errors.hours =
+              'Duration is outside the configured permitted range.';
+          measurements.push({
+            measurementDefinitionId: d.id,
+            valueType: 'duration',
+            value: duration,
+            unitId: 'second',
+          });
+        } else if (d.isRequired && !d.isArchived && !this.original?.isPartial)
+          errors.hours = 'Enter the required duration.';
+        continue;
+      }
       try {
         const input =
           this.original && value === this.initialValues[d.id]
@@ -494,6 +569,7 @@ export class ActivityEditorPage extends LitElement {
             Object.assign(patch, { [key]: parsed.data[key] });
         if (
           !this.sameScope ||
+          (this.durationChanged && this.definitions.some(isOverallDuration)) ||
           JSON.stringify(this.values) !== JSON.stringify(this.initialValues)
         )
           patch.measurements = measurements;
@@ -552,8 +628,11 @@ export class ActivityEditorPage extends LitElement {
       this.status = '';
       if (error instanceof ClientError) {
         for (const id of error.details?.missingDefinitionIds ?? [])
-          errors[`m-${id}`] =
-            'This measurement is required by the current configuration.';
+          errors[
+            this.definitions.some((d) => d.id === id && isOverallDuration(d))
+              ? 'hours'
+              : `m-${id}`
+          ] = 'This measurement is required by the current configuration.';
         for (const id of error.details?.incompatibleDefinitionIds ?? [])
           errors[`m-${id}`] =
             'This measurement no longer applies. Review the kind and variant.';
@@ -576,19 +655,21 @@ export class ActivityEditorPage extends LitElement {
   private field(key: keyof Draft, label: string, type = 'text', help = '') {
     const value = this.draft[key];
     return html`<div class="field">
-      <label for=${key}>${label}</label
+      <label for=${key}
+        >${['hours', 'minutes', 'seconds'].includes(key) ? html`<span class="sr-only">${label}</span><span aria-hidden="true">${key === 'hours' ? 'h' : key === 'minutes' ? 'min' : 'sec'}</span>` : label}</label
       ><input
         id=${key}
         type=${type}
+        aria-label=${['hours', 'minutes', 'seconds'].includes(key) ? label : nothing}
         inputmode=${['hours', 'minutes', 'seconds', 'effort', 'feeling'].includes(key) ? 'numeric' : 'text'}
         ?required=${key === 'activityDate'}
         .value=${typeof value === 'string' ? value : ''}
-        step=${type === 'datetime-local' ? '0.001' : '1'}
+        step=${type === 'time' ? '60' : '1'}
         aria-invalid=${this.errors[key] ? 'true' : 'false'}
         aria-describedby=${`${key}-help ${key}-error`}
         @input=${(e: Event) => this.change(key, (e.target as HTMLInputElement).value)}
       /><span class="help" id=${`${key}-help`}>${help}</span
-      >${this.fieldError(key)}
+      >${key === 'hours' ? nothing : this.fieldError(key)}
     </div>`;
   }
   private fieldError(key: string) {
@@ -615,10 +696,13 @@ export class ActivityEditorPage extends LitElement {
       this.saveError = undefined;
       this.status = '';
     };
-    return html`<div class="field measurement">
+    return html`<div
+      class="field measurement"
+      style=${`--input-width: ${d.valueType === 'text' ? 22 : d.valueType === 'duration' ? 12 : Math.max(8, Math.min(15, 5 + (d.precision ?? 0)))}ch`}
+    >
       <label for=${id}
         >${d.name}
-        ${d.isRequired && !d.isArchived && !this.original?.isPartial ? html`<span class="help">(required)</span>` : html`<span class="help">(optional)</span>`}${d.isArchived ? html`<span class="badge">Archived · stored value</span>` : nothing}</label
+        ${d.isRequired && !d.isArchived && !this.original?.isPartial ? html`<span aria-hidden="true">*</span>` : nothing}${d.isArchived ? html`<span class="badge">Archived · stored value</span>` : nothing}</label
       >
       <div class="with-unit">
         ${
@@ -628,7 +712,7 @@ export class ActivityEditorPage extends LitElement {
                 ?required=${d.isRequired && !d.isArchived && !this.original?.isPartial}
                 .value=${raw}
                 aria-invalid=${this.errors[id] ? 'true' : 'false'}
-                aria-describedby=${`${id}-help ${id}-error`}
+                aria-describedby=${`${id}-unit ${id}-help ${id}-error`}
                 @change=${update}
               >
                 <option value="">Not recorded</option>
@@ -645,16 +729,140 @@ export class ActivityEditorPage extends LitElement {
                 aria-describedby=${`${id}-help ${id}-error`}
                 @input=${update}
               />`
-        }${unit ? html`<span aria-hidden="true">${unit.symbol}</span>` : nothing}
+        }${unit ? html`<span id=${`${id}-unit`}>${unit.symbol}</span>` : nothing}
       </div>
       <span class="help" id=${`${id}-help`}
-        >${unit ? `Unit: ${unit.id === 'hour-minute' ? 'hours:minutes:seconds (1:25:00)' : unit.label}. ` : ''}${d.minimumValue !== null ? `Minimum ${d.minimumValue} ${d.canonicalUnit ?? ''}. ` : ''}${d.maximumValue !== null ? `Maximum ${d.maximumValue} ${d.canonicalUnit ?? ''}. ` : ''}${d.valueType === 'decimal' ? `Up to ${d.precision ?? 0} decimal places in ${d.canonicalUnit ?? 'canonical units'}.` : d.valueType === 'text' ? 'Up to 500 characters.' : ''}</span
+        >${unit?.id === 'hour-minute' ? 'Use h:mm:ss. ' : ''}${d.minimumValue !== null && d.minimumValue !== 0 ? `Minimum ${d.minimumValue} ${d.canonicalUnit ?? ''}. ` : ''}${d.maximumValue !== null ? `Maximum ${d.maximumValue} ${d.canonicalUnit ?? ''}. ` : ''}</span
       >${this.fieldError(id)}
     </div>`;
   }
+  private sectionError(id: string) {
+    const keys =
+      id === 'activity'
+        ? ['activityKindId', 'activityVariantId', 'name']
+        : id === 'timing'
+          ? [
+              'activityDate',
+              'start',
+              'hours',
+              'minutes',
+              'seconds',
+              'durationSeconds',
+            ]
+          : id === 'context'
+            ? ['notes', 'tagIds', 'effort', 'feeling']
+            : ['measurements', ...this.definitions.map((d) => 'm-' + d.id)];
+    return keys.some((key) => !!this.errors[key]);
+  }
+  private get summaries() {
+    const kind = this.kinds.find((k) => k.id === this.draft.activityKindId);
+    const variant = this.variants.find(
+      (v) => v.id === this.draft.activityVariantId,
+    );
+    const populated = this.visibleDefinitions.filter((d) =>
+      (this.values[d.id] ?? '').trim(),
+    );
+    const first =
+      populated.find((d) => d.id === kind?.primaryMeasurementDefinitionId) ??
+      populated[0];
+    const measurement = first
+      ? [
+          first.name,
+          this.values[first.id],
+          measurementUnits.find((u) => u.id === first.displayUnit)?.symbol,
+        ]
+          .filter(Boolean)
+          .join(' ') +
+        (populated.length > 1
+          ? ' \u00b7 ' + (populated.length - 1) + ' more'
+          : '')
+      : 'No measurements recorded';
+    const duration = [
+      [this.draft.hours, 'h'],
+      [this.draft.minutes, 'min'],
+      [this.draft.seconds, 's'],
+    ]
+      .filter(([value]) => value && Number(value))
+      .map(([value, unit]) => value + ' ' + unit)
+      .join(' ');
+    return {
+      activity:
+        [kind?.name, variant?.name, this.draft.name]
+          .filter(Boolean)
+          .join(' \u00b7 ') || 'Choose an activity kind',
+      timing: [
+        /^\d{4}-\d{2}-\d{2}$/.test(this.draft.activityDate)
+          ? new Intl.DateTimeFormat('en-GB', {
+              day: 'numeric',
+              month: 'short',
+              year: 'numeric',
+              timeZone: 'UTC',
+            }).format(new Date(this.draft.activityDate))
+          : this.draft.activityDate,
+        this.draft.start,
+        duration ||
+          ([this.draft.hours, this.draft.minutes, this.draft.seconds].some(
+            (value) => value.trim(),
+          )
+            ? '0 s'
+            : ''),
+      ]
+        .filter(Boolean)
+        .join(' \u00b7 '),
+      measurements: measurement,
+      context:
+        [
+          this.draft.notes.trim().split('\n')[0],
+          this.draft.tagIds.length
+            ? this.draft.tagIds.length +
+              (this.draft.tagIds.length === 1 ? ' tag' : ' tags')
+            : '',
+          this.draft.effort ? 'Effort ' + this.draft.effort + '/5' : '',
+          this.draft.feeling ? 'Feeling ' + this.draft.feeling + '/5' : '',
+        ]
+          .filter(Boolean)
+          .join(' \u00b7 ') || 'No notes or context',
+    };
+  }
+  private sectionHeader(
+    id: 'activity' | 'timing' | 'measurements' | 'context',
+    title: string,
+  ) {
+    const icon =
+      id === 'activity'
+        ? activityIcon(
+            this.kinds.find((k) => k.id === this.draft.activityKindId)
+              ?.iconName ?? 'activity',
+          )
+        : createElement(
+            id === 'timing'
+              ? Clock
+              : id === 'measurements'
+                ? Ruler
+                : NotebookPen,
+            { width: '22', height: '22', 'aria-hidden': 'true' },
+          );
+    if (id === 'activity') {
+      const color = this.kinds.find(
+        (k) => k.id === this.draft.activityKindId,
+      )?.color;
+      if (color)
+        icon.setAttribute('style', `border-bottom: 2px solid ${color}`);
+    }
+    return accordionHeader(
+      id,
+      title,
+      this.summaries[id],
+      icon,
+      this.openSection === id,
+      this.sectionError(id),
+      () => {
+        this.openSection = this.openSection === id ? '' : id;
+      },
+    );
+  }
   override render() {
     return html`<header>
-        <p class="eyebrow">Activity entry</p>
         <h1>${this.activityId ? 'Edit activity' : 'New activity'}</h1>
         <p class="muted">
           Record what, when, and the details you want to keep.
@@ -686,142 +894,170 @@ export class ActivityEditorPage extends LitElement {
                 <form novalidate @submit=${this.save} aria-busy=${this.busy}>
                   <fieldset ?disabled=${this.busy}>
                     <legend class="sr-only">Activity details</legend>
-                    <section aria-labelledby="what">
-                      <h2 id="what">What</h2>
-                      <div class="field">
-                        <label for="activityKindId"
-                          >Activity kind (required)</label
+                    <section
+                      data-section="activity"
+                      class=${this.openSection === 'activity' ? 'expanded' : ''}
+                    >
+                      ${this.sectionHeader('activity', 'Activity')}
+                      <div
+                        class="accordion-panel activity-panel"
+                        id="activity-panel"
+                        role="region"
+                        aria-labelledby="activity-trigger"
+                        ?hidden=${this.openSection !== 'activity'}
+                      >
+                        <fieldset
+                          id="activityKindId"
+                          tabindex="-1"
+                          aria-invalid=${this.errors.activityKindId ? 'true' : 'false'}
+                          aria-describedby="activityKindId-error"
+                          class="kind-picker"
                         >
-                        <div class="with-unit">
-                          ${activityIcon(this.kinds.find((k) => k.id === this.draft.activityKindId)?.iconName ?? 'activity')}<select
-                            id="activityKindId"
-                            required
-                            .value=${this.draft.activityKindId}
-                            aria-invalid=${this.errors['activityKindId'] ? 'true' : 'false'}
-                            aria-describedby="kind-help activityKindId-error"
-                            @change=${(e: Event) => this.change('activityKindId', (e.target as HTMLSelectElement).value)}
-                          >
-                            <option value="">Choose an activity kind</option>
-                            ${this.kinds.map((k) => html`<option value=${k.id} .selected=${k.id === this.draft.activityKindId}>${k.name}${k.isArchived ? ' (archived)' : ''}</option>`)}
-                          </select>
-                        </div>
-                        <span class="help" id="kind-help"
-                          >${this.kinds.find((k) => k.id === this.draft.activityKindId)?.isArchived ? 'This archived kind is retained for this historical activity. Keep its original variant or choose an active kind.' : 'The activity you performed.'}</span
-                        >${this.fieldError('activityKindId')}
-                      </div>
-                      ${
-                        this.variants.length
-                          ? html`<div class="field">
-                              <label for="activityVariantId"
-                                >Variant (optional)</label
-                              ><select
+                          <legend>Activity kind *</legend>
+                          ${
+                            this.kinds.length > 12
+                              ? html`<label class="kind-search"
+                                  >Find activity kind<input
+                                    type="search"
+                                    .value=${this.kindSearch}
+                                    @input=${(e: Event) => {
+                                      this.kindSearch = (
+                                        e.target as HTMLInputElement
+                                      ).value;
+                                    }}
+                                /></label>`
+                              : nothing
+                          }
+                          <div class="kind-grid">
+                            ${this.kinds.filter((k) => !this.kindSearch || k.name.toLowerCase().includes(this.kindSearch.toLowerCase())).map((k) => html`<label class="kind-tile"><input type="radio" name="activityKind" .value=${k.id} .checked=${k.id === this.draft.activityKindId} required @change=${() => this.change('activityKindId', k.id)} /><span class="kind-icon" style=${'--kind-color: ' + k.color}>${activityIcon(k.iconName)}</span><span>${k.name}${k.isArchived ? ' (archived)' : ''}</span><span class="selection-mark" aria-hidden="true">✓</span></label>`)}
+                          </div>
+                          ${this.kindSearch && !this.kinds.some((k) => k.name.toLowerCase().includes(this.kindSearch.toLowerCase())) ? html`<p role="status">No matching activity kinds.</p>` : nothing}
+                          ${this.fieldError('activityKindId')}
+                        </fieldset>
+                        ${
+                          this.variants.length
+                            ? html`<fieldset
                                 id="activityVariantId"
-                                .value=${this.draft.activityVariantId}
+                                class="variant-picker"
                                 ?disabled=${this.kinds.find((k) => k.id === this.draft.activityKindId)?.isArchived}
-                                aria-invalid=${this.errors['activityVariantId'] ? 'true' : 'false'}
-                                aria-describedby="variant-help activityVariantId-error"
-                                @change=${(e: Event) => this.change('activityVariantId', (e.target as HTMLSelectElement).value)}
+                                aria-invalid=${this.errors.activityVariantId ? 'true' : 'false'}
+                                aria-describedby="activityVariantId-error"
                               >
-                                <option value="">No variant</option>
-                                ${this.variants.map((v) => html`<option value=${v.id} .selected=${v.id === this.draft.activityVariantId}>${v.name}${v.isDefault ? ' (default)' : ''}${v.isArchived ? ' (archived)' : ''}</option>`)}</select
-                              ><span class="help" id="variant-help"
-                                >The form or environment of this
-                                activity.${this.variants.find((v) => v.id === this.draft.activityVariantId)?.isArchived ? ' This archived variant is retained from the original entry.' : ''}</span
-                              >${this.fieldError('activityVariantId')}
-                            </div>`
-                          : nothing
-                      }
-                    </section>
-                    <section aria-labelledby="when">
-                      <h2 id="when">When and how long</h2>
-                      ${this.field('activityDate', 'Activity date (required)', 'date', 'The journal day stays as entered, even when you record a start time.')}
-                      <fieldset class="duration">
-                        <legend>Duration (optional)</legend>
-                        <div class="columns">
-                          ${this.field('hours', 'Hours', 'text')}${this.field('minutes', 'Minutes', 'text')}${this.field('seconds', 'Seconds', 'text')}
-                        </div>
-                        <p class="help">
-                          Whole hours; minutes and seconds from 0 to 59. Leave
-                          all three blank if unknown.
-                        </p>
-                      </fieldset>
-                      <details>
-                        <summary>Start time and name (optional)</summary>
-                        ${this.field('start', 'Start date and time (optional)', 'datetime-local', `Timezone: ${Intl.DateTimeFormat().resolvedOptions().timeZone}. Stored as a UTC instant; the journal day stays as entered.`)}<label
-                          class="field"
-                          >Repeated daylight-saving time<select
-                            .value=${this.draft.occurrence}
-                            @change=${(e: Event) => this.change('occurrence', (e.target as HTMLSelectElement).value)}
-                          >
-                            <option value="earlier">First occurrence</option>
-                            <option value="later">
-                              Second occurrence
-                            </option></select
-                          ><span class="help"
-                            >Only affects a changed start time during a
-                            clock-back overlap. Existing timestamps are kept
-                            exactly until edited.</span
-                          ></label
-                        >${this.field('name', 'Activity name (optional)', 'text', 'Up to 200 characters.')}
-                      </details>
-                    </section>
-                    <section aria-labelledby="measurements">
-                      <h2 id="measurements">Measurements</h2>
-                      <p class="help" role="status">
-                        ${this.resolving ? 'Loading measurements…' : this.configurationError ? 'Measurement configuration could not be loaded.' : this.draft.activityKindId ? `${this.definitions.length} configured measurement${this.definitions.length === 1 ? '' : 's'}.` : 'Choose an activity kind to see its measurements.'}
-                      </p>
-                      ${
-                        this.configurationError
-                          ? html`${this.errorBox(this.configurationError)}<button
-                                type="button"
-                                @click=${() => this.resolve(true)}
-                              >
-                                Retry configuration
-                              </button>`
-                          : repeat(
-                              this.definitions,
-                              (d) => d.id,
-                              (d) => this.measurement(d),
-                            )
-                      }
-                      ${this.hiddenValues.length && !this.resolving ? html`<p class="retained">Kept while you edit, but excluded from this selection: ${this.hiddenValues.map(([id]) => this.knownDefinitions.get(id)?.name ?? this.original?.measurements.find((m) => m.measurementDefinitionId === id)?.name ?? 'Stored measurement').join(', ')}. Switch back to recover these values.</p>` : nothing}
-                    </section>
-                    <section aria-labelledby="context">
-                      <h2 id="context">Optional context</h2>
-                      <h3>Tags</h3>
-                      <p class="help">
-                        Reusable context across activity kinds. Archived
-                        selections can be removed but cannot be added again.
-                      </p>
-                      <activity-tag-picker
-                        .tags=${this.tags}
-                        .selected=${this.draft.tagIds}
-                        .historical=${this.original?.tags ?? []}
-                        .disabled=${this.busy}
-                        @tags-change=${(e: CustomEvent<string[]>) => this.change('tagIds', e.detail)}
-                      ></activity-tag-picker
-                      >${this.fieldError('tagIds')}
-                      <div class="field">
-                        <label for="notes">Notes (optional)</label
-                        ><textarea
-                          id="notes"
-                          rows="4"
-                          .value=${this.draft.notes}
-                          aria-invalid=${this.errors['notes'] ? 'true' : 'false'}
-                          aria-describedby="notes-help notes-error"
-                          @input=${(e: Event) => this.change('notes', (e.target as HTMLTextAreaElement).value)}
-                        ></textarea
-                        ><span id="notes-help" class="help"
-                          >${this.draft.notes.length > 9500 ? `${10000 - this.draft.notes.length} characters remaining.` : 'Plain text, up to 10,000 characters.'}</span
-                        >${this.fieldError('notes')}
+                                <legend>Variant</legend>
+                                <div class="variant-chips">
+                                  ${[{ id: '', name: 'No variant', isArchived: false }, ...this.variants].map((v) => html`<label class="variant-chip"><input type="radio" name="activityVariant" .value=${v.id} .checked=${v.id === this.draft.activityVariantId} @change=${() => this.change('activityVariantId', v.id)} /><span>${v.name}${v.isArchived ? ' (archived)' : ''}</span><span class="selection-mark" aria-hidden="true">✓</span></label>`)}
+                                </div>
+                                ${this.fieldError('activityVariantId')}
+                              </fieldset>`
+                            : nothing
+                        }
+                        ${this.field('name', 'Activity name')}
                       </div>
-                      <details>
-                        <summary>Effort and feeling (optional)</summary>
-                        <div class="columns">
-                          ${this.field('effort', 'Effort (1–5)', 'text')}${this.field('feeling', 'Feeling (1–5)', 'text')}
+                    </section>
+                    <section
+                      data-section="timing"
+                      class=${this.openSection === 'timing' ? 'expanded' : ''}
+                    >
+                      ${this.sectionHeader('timing', 'Timing')}
+                      <div
+                        class="accordion-panel timing-panel"
+                        id="timing-panel"
+                        role="region"
+                        aria-labelledby="timing-trigger"
+                        ?hidden=${this.openSection !== 'timing'}
+                      >
+                        ${this.field('activityDate', 'Activity date *', 'date')}
+                        ${this.field('start', 'Start time', 'time', 'Europe/Helsinki')}
+                        <fieldset class="duration">
+                          <legend>
+                            Duration${this.durationRequired ? ' *' : ''}
+                          </legend>
+                          <div class="duration-inputs">
+                            ${this.field('hours', 'Hours', 'text')}${this.field('minutes', 'Minutes', 'text')}${this.field('seconds', 'Seconds', 'text')}
+                          </div>
+                          ${this.fieldError('hours')}
+                        </fieldset>
+                      </div>
+                    </section>
+                    <section
+                      data-section="measurements"
+                      class=${this.openSection === 'measurements' ? 'expanded' : ''}
+                    >
+                      ${this.sectionHeader('measurements', 'Measurements')}
+                      <div
+                        class="accordion-panel measurements-panel"
+                        id="measurements-panel"
+                        role="region"
+                        aria-labelledby="measurements-trigger"
+                        ?hidden=${this.openSection !== 'measurements'}
+                      >
+                        <p class="help" role="status">
+                          ${this.resolving ? 'Loading measurements…' : this.configurationError ? 'Measurement configuration could not be loaded.' : this.draft.activityKindId ? (this.visibleDefinitions.length ? '' : 'No additional measurements for this activity.') : 'Choose an activity kind to see its measurements.'}
+                        </p>
+                        ${
+                          this.configurationError
+                            ? html`${this.errorBox(this.configurationError)}<button
+                                  type="button"
+                                  @click=${() => this.resolve(true)}
+                                >
+                                  Retry configuration
+                                </button>`
+                            : repeat(
+                                this.visibleDefinitions,
+                                (d) => d.id,
+                                (d) => this.measurement(d),
+                              )
+                        }
+                        ${this.hiddenValues.length && !this.resolving ? html`<p class="retained">Kept while you edit, but excluded from this selection: ${this.hiddenValues.map(([id]) => this.knownDefinitions.get(id)?.name ?? this.original?.measurements.find((m) => m.measurementDefinitionId === id)?.name ?? 'Stored measurement').join(', ')}. Switch back to recover these values.</p>` : nothing}
+                      </div>
+                    </section>
+                    <section
+                      data-section="context"
+                      class=${this.openSection === 'context' ? 'expanded' : ''}
+                    >
+                      ${this.sectionHeader('context', 'Notes & context')}
+                      <div
+                        class="accordion-panel context-panel"
+                        id="context-panel"
+                        role="region"
+                        aria-labelledby="context-trigger"
+                        ?hidden=${this.openSection !== 'context'}
+                      >
+                        <div class="tag-context">
+                          <h3>Tags</h3>
+                          <activity-tag-picker
+                            .tags=${this.tags}
+                            .selected=${this.draft.tagIds}
+                            .historical=${this.original?.tags ?? []}
+                            .disabled=${this.busy}
+                            @tags-change=${(e: CustomEvent<string[]>) => this.change('tagIds', e.detail)}
+                          ></activity-tag-picker
+                          >${this.fieldError('tagIds')}
                         </div>
-                      </details>
-                      ${this.original?.isPartial ? html`<p class="help">This is a partial historical record. Missing required measurements may remain unrecorded.</p>` : nothing}
+                        <div class="context-fields">
+                          <div class="field">
+                            <label for="notes">Notes</label
+                            ><textarea
+                              id="notes"
+                              rows="4"
+                              .value=${this.draft.notes}
+                              aria-invalid=${this.errors['notes'] ? 'true' : 'false'}
+                              aria-describedby="notes-help notes-error"
+                              @input=${(e: Event) => this.change('notes', (e.target as HTMLTextAreaElement).value)}
+                            ></textarea
+                            ><span id="notes-help" class="help"
+                              >${this.draft.notes.length > 9500 ? `${10000 - this.draft.notes.length} characters remaining.` : 'Plain text, up to 10,000 characters.'}</span
+                            >${this.fieldError('notes')}
+                          </div>
+                          <details>
+                            <summary>Effort and feeling</summary>
+                            <div class="columns">
+                              ${this.field('effort', 'Effort (1–5)', 'text')}${this.field('feeling', 'Feeling (1–5)', 'text')}
+                            </div>
+                          </details>
+                          ${this.original?.isPartial ? html`<p class="help">This is a partial historical record. Missing required measurements may remain unrecorded.</p>` : nothing}
+                        </div>
+                      </div>
                     </section>
                   </fieldset>
                   ${Object.keys(this.errors).length ? html`<p class="error" role="alert">Review the marked fields. Your entries have been kept.</p>` : nothing}
@@ -835,12 +1071,19 @@ export class ActivityEditorPage extends LitElement {
                       : nothing
                   }
                   <footer class="actions">
+                    <p class="save-summary">
+                      <strong>${this.summaries.activity}</strong
+                      ><span
+                        >${this.summaries.timing} &middot;
+                        ${this.summaries.measurements}</span
+                      >
+                    </p>
                     <button
                       type="submit"
                       class="primary"
                       ?disabled=${this.busy || this.resolving || !!this.configurationError || !this.kinds.length}
                     >
-                      ${this.busy ? 'Saving…' : 'Save activity'}</button
+                      ${this.busy ? 'Saving…' : this.activityId ? 'Save changes' : 'Save activity'}</button
                     ><button
                       type="button"
                       ?disabled=${this.busy}
@@ -854,23 +1097,19 @@ export class ActivityEditorPage extends LitElement {
   }
   static override styles = [
     managementStyles,
+    accordionStyles,
     css`
       :host {
-        max-width: 760px;
+        max-width: var(--editor-width);
         margin: 0 auto;
       }
       header {
         display: grid;
-        gap: var(--space-3);
-      }
-      .eyebrow {
-        color: var(--color-primary);
-        font-size: var(--font-size-small);
-        font-weight: 600;
+        gap: 4px;
       }
       .status {
-        min-height: 24px;
-        margin: var(--space-4) 0;
+        min-height: 0;
+        margin: 8px 0;
       }
       fieldset {
         border: 0;
@@ -878,19 +1117,10 @@ export class ActivityEditorPage extends LitElement {
         margin: 0;
         min-width: 0;
       }
-      section {
-        display: grid;
-        gap: var(--space-5);
-        padding: var(--space-6) 0;
-        border-top: 1px solid var(--color-border);
-      }
       .columns {
         display: grid;
         grid-template-columns: repeat(3, minmax(0, 1fr));
         gap: var(--space-3);
-      }
-      .duration legend {
-        margin-bottom: var(--space-3);
       }
       select,
       textarea {
@@ -945,11 +1175,6 @@ export class ActivityEditorPage extends LitElement {
       details > .columns {
         margin-top: var(--space-4);
       }
-      footer {
-        padding: var(--space-5) 0;
-        border-top: 1px solid var(--color-border);
-        margin-top: var(--space-4);
-      }
       .sr-only {
         position: absolute;
         width: 1px;
@@ -965,10 +1190,281 @@ export class ActivityEditorPage extends LitElement {
         background: var(--color-surface-subtle);
         border-radius: var(--radius-md);
       }
-      @media (max-width: 480px) {
-        .columns {
+
+      h1 {
+        font-family: var(--font-family-display);
+        font-size: 32px;
+        font-weight: 400;
+      }
+      .status:empty {
+        display: none;
+      }
+      section {
+        border-top: 1px solid var(--color-divider);
+        display: flex;
+        flex-direction: column;
+        padding: 0;
+        gap: 0;
+        min-height: 0;
+      }
+      .accordion-heading {
+        flex-shrink: 0;
+      }
+      .accordion-panel {
+        display: grid;
+        gap: 12px;
+        align-content: start;
+      }
+      .tag-context {
+        display: grid;
+        gap: 12px;
+        align-content: start;
+      }
+      .context-fields {
+        display: grid;
+        align-content: start;
+        gap: 12px;
+      }
+      .context-panel > .field {
+        align-content: start;
+      }
+      .context-panel textarea {
+        min-height: 100px;
+      }
+      .measurements-panel {
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+      }
+      .measurements-panel > p,
+      .measurements-panel > .error-box {
+        grid-column: 1 / -1;
+      }
+      .field {
+        gap: 4px;
+      }
+      .error:empty,
+      .help:empty {
+        display: none;
+      }
+      .save-summary {
+        flex: 1;
+        min-width: 0;
+        display: grid;
+        font-size: 13px;
+      }
+      .save-summary span,
+      .save-summary strong {
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+      .save-summary span {
+        color: var(--color-text-muted);
+      }
+      footer {
+        border-top: 1px solid var(--color-divider);
+        background: var(--color-bg);
+        margin: 0;
+        padding: 16px 0;
+        flex-shrink: 0;
+        position: sticky;
+        bottom: 0;
+      }
+
+      .activity-panel {
+        gap: 16px;
+      }
+      .kind-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+        gap: 8px;
+      }
+      .kind-picker legend,
+      .variant-picker legend {
+        margin-bottom: 8px;
+      }
+      .kind-tile,
+      .variant-chip {
+        position: relative;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        min-height: 48px;
+        padding: 8px 12px;
+        border: 1px solid var(--color-control-border);
+        border-radius: var(--radius-sm);
+        cursor: pointer;
+        background: var(--color-input);
+      }
+      .kind-tile input,
+      .variant-chip input {
+        position: absolute;
+        opacity: 0;
+        width: 1px;
+        height: 1px;
+        min-height: 0;
+      }
+      .kind-tile:has(:checked),
+      .variant-chip:has(:checked) {
+        border-color: var(--color-primary);
+        background: var(--color-primary-soft);
+        box-shadow: inset 0 0 0 1px var(--color-primary);
+        font-weight: 650;
+      }
+      .selection-mark {
+        display: none;
+        margin-left: auto;
+        color: var(--color-primary);
+      }
+      .kind-tile:has(:checked) .selection-mark,
+      .variant-chip:has(:checked) .selection-mark {
+        display: inline;
+      }
+      .kind-tile:has(:focus-visible),
+      .variant-chip:has(:focus-visible) {
+        outline: 3px solid var(--color-focus);
+        outline-offset: 3px;
+      }
+      .kind-tile:hover,
+      .variant-chip:hover {
+        border-color: var(--color-control-hover);
+      }
+      .kind-icon {
+        display: flex;
+        border-bottom: 3px solid var(--kind-color);
+        padding-bottom: 3px;
+        color: var(--color-text);
+      }
+      .kind-icon svg {
+        width: 20px;
+        height: 20px;
+      }
+      .variant-chips {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+      }
+      .variant-chip {
+        border-radius: var(--radius-pill);
+      }
+      .variant-picker:disabled {
+        opacity: 0.6;
+      }
+      .kind-search {
+        display: grid;
+        gap: 4px;
+        margin-bottom: 12px;
+        max-width: 320px;
+      }
+      .activity-panel > .field {
+        max-width: 400px;
+      }
+      .duration-inputs {
+        display: flex;
+        gap: 8px;
+      }
+      .duration-inputs .field {
+        width: auto;
+        display: grid;
+        grid-template-columns: 54px auto;
+        align-items: center;
+        gap: 6px;
+      }
+      .duration-inputs label {
+        white-space: nowrap;
+        grid-column: 2;
+        grid-row: 1;
+      }
+      .duration-inputs input {
+        grid-column: 1;
+        grid-row: 1;
+      }
+      .duration-inputs .error {
+        grid-column: 1 / -1;
+      }
+      .duration-inputs input {
+        width: 100%;
+      }
+      .duration legend {
+        margin-bottom: 4px;
+      }
+      .duration-inputs label {
+        font-size: 13px;
+        color: var(--color-text-secondary);
+      }
+
+      .timing-panel input {
+        min-width: 0;
+      }
+      .measurement .with-unit input {
+        flex: 0 1 auto;
+        width: var(--input-width);
+        max-width: 100%;
+      }
+      .measurement .with-unit select {
+        flex: 0 1 auto;
+        width: 140px;
+      }
+      .measurement .with-unit span {
+        white-space: nowrap;
+      }
+      .context-fields .columns {
+        grid-template-columns: repeat(2, minmax(0, 100px));
+      }
+      @media (min-width: 1200px) {
+        .measurements-panel {
+          grid-template-columns: repeat(4, minmax(0, 1fr));
+        }
+      }
+      @media (min-width: 769px) and (max-width: 1000px) {
+        .measurements-panel {
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+        }
+      }
+      @media (min-width: 769px) {
+        .timing-panel {
+          grid-template-columns: minmax(160px, 1fr) minmax(130px, 1fr) minmax(
+              300px,
+              1.5fr
+            );
+          align-items: start;
+        }
+        .context-panel {
+          grid-template-columns: 1fr 1.5fr;
+        }
+        :host {
+          height: calc(100dvh - 120px);
+          display: flex;
+          flex-direction: column;
+        }
+        form {
+          display: flex;
+          flex-direction: column;
+          flex: 1;
+          min-height: 0;
+        }
+        form > fieldset {
+          display: flex;
+          flex-direction: column;
+          min-height: 0;
+          flex: 1;
+        }
+        section {
+          flex-shrink: 0;
+        }
+        section.expanded {
+          flex: 1;
+          flex-shrink: 1;
+        }
+      }
+      @media (max-width: 768px) {
+        .measurements-panel {
           grid-template-columns: 1fr;
         }
+        .save-summary {
+          flex-basis: 100%;
+        }
+      }
+      @media (max-width: 480px) {
         footer button {
           flex: 1;
         }

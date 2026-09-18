@@ -8,7 +8,7 @@
   "scripts": {
     "import:legacy": "node scripts/import/cli.mjs",
     "test:import": "npm exec --workspace @activus/api -- vitest run test/legacy-import.test.ts test/legacy-activity-mapping.test.ts",
-    "dev": "npm run build --workspace @activus/contracts && concurrently --kill-others --names contracts,api,web \"npm run dev --workspace @activus/contracts\" \"npm run dev --workspace @activus/api\" \"npm run dev --workspace @activus/web\"",
+    "dev": "npm run build --workspace @activus/contracts && concurrently --raw --kill-others --names contracts,api,web \"npm run dev --workspace @activus/contracts\" \"npm run dev --workspace @activus/api\" \"npm run dev --workspace @activus/web\"",
     "build": "npm run build --workspace @activus/contracts && npm run build --workspace @activus/api && npm run build --workspace @activus/web",
     "typecheck": "npm run build --workspace @activus/contracts && npm run typecheck --workspaces",
     "test": "npm run build --workspace @activus/contracts && npm run test --workspaces --if-present",

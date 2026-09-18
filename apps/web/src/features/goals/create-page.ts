@@ -1,4 +1,6 @@
 import { LitElement, css, html, nothing, type PropertyValues } from 'lit';
+import { measurementUnits } from '@activus/contracts';
+import { goalStyles } from './styles.js';
 import type {
   ActivityKind,
   ActivityVariant,
@@ -50,6 +52,8 @@ export class GoalFormPage extends LitElement {
     error: { state: true },
     confirming: { state: true },
     leaving: { state: true },
+    targetType: { state: true },
+    scheduleMode: { state: true },
   };
   route = '/goals/new';
   api: GoalFormApi = configurationApi;
@@ -72,6 +76,8 @@ export class GoalFormPage extends LitElement {
   private confirmationTrigger: HTMLElement | undefined;
   private pendingNavigation: (() => void) | undefined;
   private navigationTrigger: HTMLElement | undefined;
+  private targetType: Goal['targetType'] = 'activity_count';
+  private scheduleMode: Goal['scheduleMode'] = 'fixed';
   private selectedKindId = '';
   private selectedVariantId = '';
   private selectedMeasurementId = '';
@@ -170,6 +176,8 @@ export class GoalFormPage extends LitElement {
         this.api.listTags(!!goal),
       ]);
       this.goal = goal;
+      this.targetType = goal?.targetType ?? 'activity_count';
+      this.scheduleMode = goal?.scheduleMode ?? 'fixed';
       this.original = goal;
       this.baseline = goal ?? newGoalBaseline();
       this.setDirty(false);
@@ -280,7 +288,8 @@ export class GoalFormPage extends LitElement {
           ? String(fields.get('value'))
           : targetType === 'total_duration'
             ? Number(fields.get('hours') || 0) * 3600 +
-              Number(fields.get('minutes') || 0) * 60
+              Number(fields.get('minutes') || 0) * 60 +
+              Number(fields.get('seconds') || 0)
             : Number(fields.get('value')),
       measurementDefinitionId:
         targetType === 'measurement_total'
@@ -401,12 +410,20 @@ export class GoalFormPage extends LitElement {
       return html`${this.error instanceof ClientError && this.error.kind === 'not-found' ? html`<h1>Goal not found</h1>` : html`<h1>Goal unavailable</h1>`}
         <p role="alert">${clientMessage(this.error)}</p>
         <button @click=${this.load}>Retry goal</button>`;
+    const measurement = this.measurements.find(
+      (m) => m.id === this.selectedMeasurementId,
+    );
+    const unit = measurementUnits.find(
+      (u) => u.id === measurement?.canonicalUnit,
+    );
     const goal = this.goal,
       duration =
         goal?.targetType === 'total_duration' ? Number(goal.targetValue) : 0;
     return html`<header>
-        <h1>${this.editing ? 'Edit goal' : 'New goal'}</h1>
-        <p>Define what you want your journal to track.</p>
+        <div>
+          <h1>${this.editing ? 'Edit goal' : 'Create goal'}</h1>
+          <p class="muted">Define what you want your journal to track.</p>
+        </div>
       </header>
       <form
         @submit=${this.save}
@@ -415,147 +432,204 @@ export class GoalFormPage extends LitElement {
       >
         <section>
           <h2>Goal</h2>
-          <label
-            >Name
-            <input
-              required
-              name="name"
-              maxlength="120"
-              .value=${this.value('name')} /></label
-          ><label
-            >Description
-            <textarea
-              name="description"
-              maxlength="10000"
-              .value=${this.value('description')}
-            ></textarea>
-          </label>
+          <div class="fields">
+            <label
+              >Name *
+              <input
+                required
+                name="name"
+                maxlength="120"
+                .value=${this.value('name')} /></label
+            ><label
+              >Description
+              <textarea
+                name="description"
+                maxlength="10000"
+                .value=${this.value('description')}
+              ></textarea>
+            </label>
+          </div>
         </section>
         <section>
           <h2>What counts</h2>
-          <label
-            >Activity kind
-            <select required name="kind" @change=${this.kindChanged}>
-              <option value="" .selected=${!this.selectedKindId}>
-                Choose a kind
-              </option>
-              ${this.kinds.map((item) => html`<option value=${item.id} .selected=${item.id === this.selectedKindId}>${this.label(item)}</option>`)}
-            </select></label
-          >
-          <label
-            >Variant
-            <select name="variant" @change=${this.variantChanged}>
-              <option value="" .selected=${!this.selectedVariantId}>
-                Any variant
-              </option>
-              ${this.variants.map((item) => html`<option value=${item.id} .selected=${item.id === this.selectedVariantId}>${this.label(item)}</option>`)}
-            </select></label
-          >
-          <p>Several selected tags must all be present.</p>
-          ${this.tags.map((item) => html`<label><input type="checkbox" name="tag" value=${item.id} .checked=${this.selectedTagIds.has(item.id)} @change=${this.tagChanged} /> ${this.label(item)}</label>`)}
+          <div class="fields">
+            <label
+              >Activity kind *
+              <select required name="kind" @change=${this.kindChanged}>
+                <option value="" .selected=${!this.selectedKindId}>
+                  Choose a kind
+                </option>
+                ${this.kinds.map((item) => html`<option value=${item.id} .selected=${item.id === this.selectedKindId}>${this.label(item)}</option>`)}
+              </select></label
+            >
+            <label
+              >Variant
+              <select name="variant" @change=${this.variantChanged}>
+                <option value="" .selected=${!this.selectedVariantId}>
+                  Any variant
+                </option>
+                ${this.variants.map((item) => html`<option value=${item.id} .selected=${item.id === this.selectedVariantId}>${this.label(item)}</option>`)}
+              </select></label
+            >
+            <fieldset class="tag-options">
+              <legend>Required tags</legend>
+              <p class="help">Activities must include every selected tag.</p>
+              ${this.tags.map((item) => html`<label class="choice"><input type="checkbox" name="tag" value=${item.id} .checked=${this.selectedTagIds.has(item.id)} @change=${this.tagChanged} /> ${this.label(item)}</label>`)}
+            </fieldset>
+          </div>
         </section>
         <section>
           <h2>What to reach</h2>
-          <fieldset>
-            <legend>Target type</legend>
-            ${[
-              ['activity_count', 'Number of activities'],
-              ['total_duration', 'Total duration'],
-              ['measurement_total', 'Measurement total'],
-            ].map(
-              ([value, label]) =>
-                html`<label
-                  ><input
-                    type="radio"
-                    name="targetType"
-                    value=${value}
-                    .checked=${(goal?.targetType ?? 'activity_count') === value}
-                  />
-                  ${label}</label
-                >`,
-            )}
-          </fieldset>
-          <label
-            >Target value
-            <input
-              required
-              name="value"
-              inputmode="decimal"
-              .value=${goal?.targetType === 'total_duration' ? '' : this.value('targetValue')}
-          /></label>
-          <label
-            >Hours
-            <input
-              name="hours"
-              type="number"
-              min="0"
-              .value=${String(Math.floor(duration / 3600))} /></label
-          ><label
-            >Minutes
-            <input
-              name="minutes"
-              type="number"
-              min="0"
-              max="59"
-              .value=${String(Math.floor((duration % 3600) / 60))}
-          /></label>
-          <label
-            >Measurement
-            <select name="measurement" @change=${this.measurementChanged}>
-              <option value="" .selected=${!this.selectedMeasurementId}>
-                Choose a measurement
-              </option>
-              ${this.measurements.map((item) => html`<option value=${item.id} .selected=${item.id === this.selectedMeasurementId}>${this.label(item)} ${item.displayUnit ?? item.canonicalUnit ?? ''}</option>`)}
-            </select></label
-          >
+          <div class="fields">
+            <fieldset>
+              <legend>Target type *</legend>
+              ${[
+                ['activity_count', 'Number of activities'],
+                ['total_duration', 'Total duration'],
+                ['measurement_total', 'Measurement total'],
+              ].map(
+                ([value, label]) =>
+                  html`<label class="choice"
+                    ><input
+                      type="radio"
+                      name="targetType"
+                      @change=${async (event: Event) => {
+                        this.targetType = (event.target as HTMLInputElement)
+                          .value as Goal['targetType'];
+                        await this.updateComplete;
+                        this.updateDirty();
+                      }}
+                      value=${value}
+                      .checked=${this.targetType === value}
+                    />
+                    ${label}</label
+                  >`,
+              )}
+            </fieldset>
+            <label
+              class="number-field"
+              ?hidden=${this.targetType === 'total_duration'}
+              >Target value *
+              <span class="value-unit"
+                ><input
+                  ?required=${this.targetType !== 'total_duration'}
+                  ?disabled=${this.targetType === 'total_duration'}
+                  aria-describedby="target-unit"
+                  name="value"
+                  inputmode="decimal"
+                  .value=${goal?.targetType === 'total_duration' ? '' : this.value('targetValue')}
+                /><span id="target-unit"
+                  >${this.targetType === 'activity_count' ? 'activities' : (unit?.label ?? '')}</span
+                ></span
+              ></label
+            >
+            <div
+              class="duration-fields"
+              ?hidden=${this.targetType !== 'total_duration'}
+            >
+              <label
+                >Hours
+                <input
+                  name="hours"
+                  ?disabled=${this.targetType !== 'total_duration'}
+                  type="number"
+                  min="0"
+                  .value=${String(Math.floor(duration / 3600))} /></label
+              ><label
+                >Minutes
+                <input
+                  name="minutes"
+                  ?disabled=${this.targetType !== 'total_duration'}
+                  type="number"
+                  min="0"
+                  max="59"
+                  .value=${String(Math.floor((duration % 3600) / 60))}
+              /></label>
+              <label
+                >Seconds<input
+                  name="seconds"
+                  type="number"
+                  min="0"
+                  max="59"
+                  ?disabled=${this.targetType !== 'total_duration'}
+                  .value=${String(duration % 60)}
+              /></label>
+            </div>
+            <label ?hidden=${this.targetType !== 'measurement_total'}
+              >Measurement *
+              <select
+                ?required=${this.targetType === 'measurement_total'}
+                ?disabled=${this.targetType !== 'measurement_total'}
+                name="measurement"
+                @change=${this.measurementChanged}
+              >
+                <option value="" .selected=${!this.selectedMeasurementId}>
+                  Choose a measurement
+                </option>
+                ${this.measurements.map((item) => html`<option value=${item.id} .selected=${item.id === this.selectedMeasurementId}>${this.label(item)} ${measurementUnits.find((u) => u.id === item.canonicalUnit)?.label ?? ''}</option>`)}
+              </select></label
+            >
+          </div>
         </section>
         <section>
           <h2>When</h2>
-          <fieldset>
-            <legend>Schedule</legend>
-            ${[
-              ['fixed', 'Fixed total'],
-              ['recurring', 'Recurring'],
-            ].map(
-              ([value, label]) =>
-                html`<label
-                  ><input
-                    type="radio"
-                    name="schedule"
-                    value=${value}
-                    .checked=${(goal?.scheduleMode ?? 'fixed') === value}
-                  />
-                  ${label}</label
-                >`,
-            )}
-          </fieldset>
-          <label
-            >Recurrence
-            <select
-              name="recurrence"
-              .value=${this.value('recurrencePeriod', 'week')}
+          <div class="fields when-fields">
+            <fieldset>
+              <legend>Schedule *</legend>
+              ${[
+                ['fixed', 'Fixed total'],
+                ['recurring', 'Recurring'],
+              ].map(
+                ([value, label]) =>
+                  html`<label class="choice"
+                    ><input
+                      type="radio"
+                      name="schedule"
+                      @change=${async (event: Event) => {
+                        this.scheduleMode = (event.target as HTMLInputElement)
+                          .value as Goal['scheduleMode'];
+                        await this.updateComplete;
+                        this.updateDirty();
+                      }}
+                      value=${value}
+                      .checked=${this.scheduleMode === value}
+                    />
+                    ${label}</label
+                  >`,
+              )}
+            </fieldset>
+            <label ?hidden=${this.scheduleMode !== 'recurring'}
+              >Recurrence *
+              <select
+                name="recurrence"
+                ?disabled=${this.scheduleMode !== 'recurring'}
+                .value=${this.value('recurrencePeriod', 'week')}
+              >
+                <option value="week">Week</option>
+                <option value="month">Month</option>
+                <option value="year">Year</option>
+              </select></label
             >
-              <option value="week">Week</option>
-              <option value="month">Month</option>
-              <option value="year">Year</option>
-            </select></label
-          >
-          <label
-            >Start
-            <input
-              required
-              type="date"
-              name="start"
-              .value=${this.value('startDate')} /></label
-          ><label
-            >End
-            <input
-              required
-              type="date"
-              name="end"
-              .value=${this.value('endDate')}
-          /></label>
-          <p>Recurring targets reset in every selected calendar period.</p>
+            <label
+              >Start *
+              <input
+                required
+                type="date"
+                name="start"
+                .value=${this.value('startDate')} /></label
+            ><label
+              >End *
+              <input
+                required
+                type="date"
+                name="end"
+                .value=${this.value('endDate')}
+            /></label>
+            <p class="help full" ?hidden=${this.scheduleMode !== 'recurring'}>
+              Targets reset each calendar period. Boundary periods include only
+              dates within the goal range.
+            </p>
+          </div>
         </section>
         ${this.error ? html`<p role="alert">${clientMessage(this.error)}</p>` : nothing}
         <footer>
@@ -628,61 +702,134 @@ export class GoalFormPage extends LitElement {
           : nothing
       }`;
   }
-  static override styles = css`
-    :host {
-      display: block;
-      max-width: 760px;
-      margin: auto;
-    }
-    section {
-      display: grid;
-      gap: 12px;
-      padding: 24px 0;
-      border-top: 1px solid var(--color-border);
-    }
-    label {
-      display: grid;
-      gap: 4px;
-    }
-    input,
-    select,
-    textarea {
-      min-height: 44px;
-      padding: 8px;
-      font: inherit;
-      background: var(--color-surface);
-      color: var(--color-text);
-      border: 1px solid var(--color-control-border);
-      border-radius: var(--radius-md);
-    }
-    fieldset {
-      display: grid;
-      gap: 8px;
-      border: 0;
-      padding: 0;
-    }
-    footer,
-    .actions {
-      display: flex;
-      gap: 12px;
-      padding: 24px 0;
-    }
-    .primary {
-      background: var(--color-primary);
-      color: white;
-    }
-    dialog {
-      max-width: 520px;
-      color: var(--color-text);
-      background: var(--color-surface);
-      border: 1px solid var(--color-border);
-      border-radius: var(--radius-lg);
-      padding: 24px;
-    }
-    dialog::backdrop {
-      background: rgb(0 0 0 / 45%);
-    }
-  `;
+  static override styles = [
+    goalStyles,
+    css`
+      :host {
+        max-width: 880px;
+      }
+      section {
+        display: grid;
+        grid-template-columns: 150px minmax(0, 1fr);
+        gap: var(--space-5);
+        padding: var(--space-5) 0;
+        border-top: 1px solid var(--color-border);
+      }
+      section h2 {
+        padding-top: var(--space-2);
+      }
+      .fields {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: var(--space-4);
+        min-width: 0;
+      }
+      label {
+        display: grid;
+        align-content: start;
+        gap: var(--space-2);
+        min-width: 0;
+        font-size: var(--font-size-small);
+      }
+      input,
+      select,
+      textarea {
+        width: 100%;
+        min-width: 0;
+        font: inherit;
+        min-height: 44px;
+        background: var(--color-input);
+        color: var(--color-text);
+        border: 1px solid var(--color-control-border);
+        border-radius: var(--radius-sm);
+        padding: var(--space-2) var(--space-3);
+      }
+      textarea {
+        min-height: 80px;
+        resize: vertical;
+      }
+      input[type='radio'],
+      input[type='checkbox'] {
+        min-height: 18px;
+        width: 18px;
+        padding: 0;
+      }
+      fieldset {
+        grid-column: 1 / -1;
+        display: flex;
+        flex-wrap: wrap;
+        gap: var(--space-2);
+        border: 0;
+        padding: 0;
+        margin: 0;
+        min-width: 0;
+      }
+      legend {
+        font-size: var(--font-size-small);
+        margin-bottom: var(--space-2);
+      }
+      .choice {
+        display: flex;
+        align-items: center;
+        gap: var(--space-2);
+        min-height: 44px;
+        padding: var(--space-2) var(--space-3);
+        border: 1px solid var(--color-border);
+        border-radius: var(--radius-sm);
+        cursor: pointer;
+      }
+      .choice:has(:checked) {
+        background: var(--color-primary-soft);
+        border-color: var(--color-primary);
+      }
+      .tag-options p {
+        flex-basis: 100%;
+        margin: 0;
+      }
+      .value-unit {
+        display: flex;
+        align-items: center;
+        gap: var(--space-2);
+      }
+      .value-unit input {
+        max-width: 150px;
+      }
+      .duration-fields {
+        display: flex;
+        gap: var(--space-3);
+        grid-column: 1 / -1;
+      }
+      .duration-fields label {
+        max-width: 100px;
+      }
+      .when-fields {
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+      }
+      .full {
+        grid-column: 1 / -1;
+      }
+      footer {
+        display: flex;
+        gap: var(--space-3);
+        padding: var(--space-5) 0;
+        border-top: 1px solid var(--color-border);
+      }
+      @media (max-width: 700px) {
+        section {
+          grid-template-columns: minmax(0, 1fr);
+          gap: var(--space-4);
+        }
+      }
+      @media (max-width: 440px) {
+        .fields {
+          grid-template-columns: minmax(0, 1fr);
+        }
+        .choice {
+          width: 100%;
+        }
+      }
+    `,
+  ];
 }
 customElements.define('goal-form-page', GoalFormPage);
 export class GoalCreatePage extends GoalFormPage {}

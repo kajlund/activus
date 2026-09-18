@@ -10,6 +10,8 @@ import {
   localInstant,
   startInstant,
   measurementInput,
+  activityStartTime,
+  activityStartInstant,
 } from '../src/features/activities/values.js';
 import { editorFixture, validMeasurement } from './support/activity-editor.js';
 import {
@@ -49,6 +51,14 @@ async function input(
   value: string,
   event = 'input',
 ) {
+  if (id === 'activityKindId' || id === 'activityVariantId') {
+    const name = id === 'activityKindId' ? 'activityKind' : 'activityVariant';
+    el.shadowRoot!.querySelector<HTMLInputElement>(
+      `input[name="${name}"][value="${value}"]`,
+    )!.click();
+    await settle(el);
+    return;
+  }
   field(el, id).value = value;
   field(el, id).dispatchEvent(new Event(event, { bubbles: true }));
   await settle(el);
@@ -86,13 +96,19 @@ async function existing() {
 }
 it('loads new entry without inventing a kind or measurement; selection applies configured default', async () => {
   const el = await page();
-  expect(field(el, 'activityKindId').value).toBe('');
+  expect(
+    el.shadowRoot!.querySelector('input[name=activityKind]:checked'),
+  ).toBeNull();
   expect(field(el, 'activityDate').value).toBe(localDate());
   expect(el.dirty).toBe(false);
   await selectKind(el);
-  expect(field(el, 'activityVariantId').value).toBe(fixture.variant.id);
+  expect(
+    el.shadowRoot!.querySelector<HTMLInputElement>(
+      'input[name=activityVariant]:checked',
+    )!.value,
+  ).toBe(fixture.variant.id);
   expect(field(el, `m-${fixture.distance.id}`).value).toBe('');
-  expect(el.shadowRoot!.textContent).toContain('Kilometres');
+  expect(el.shadowRoot!.textContent).toContain('km');
 });
 it('renders an actionable empty-kind state without enabling saving', async () => {
   fixture.deps.activityKinds.rows.clear();
@@ -221,7 +237,11 @@ it('retains archived kind, variant, measurement and tags while editing', async (
     new Date();
   fixture.deps.tags.rows.get(fixture.tag.id)!.archivedAt = new Date();
   const el = await page(`/activities/${a.id}/edit`);
-  expect(field(el, 'activityKindId').value).toBe(fixture.kind.id);
+  expect(
+    el.shadowRoot!.querySelector<HTMLInputElement>(
+      'input[name=activityKind]:checked',
+    )!.value,
+  ).toBe(fixture.kind.id);
   expect(field(el, 'activityVariantId').disabled).toBe(true);
   expect(el.shadowRoot!.textContent).toContain('Archived');
   const picker = el.shadowRoot!.querySelector<ActivityTagPicker>(
@@ -586,7 +606,11 @@ it('retains an original archived variant when switching away and back to its arc
   const el = await page(`/activities/${a.id}/edit`);
   await input(el, 'activityKindId', other.id, 'change');
   await input(el, 'activityKindId', fixture.kind.id, 'change');
-  expect(field(el, 'activityVariantId').value).toBe(fixture.variant.id);
+  expect(
+    el.shadowRoot!.querySelector<HTMLInputElement>(
+      'input[name=activityVariant]:checked',
+    )!.value,
+  ).toBe(fixture.variant.id);
   expect(field(el, `m-${fixture.distance.id}`).value).toBe(
     a.measurements[0]?.displayValue,
   );
@@ -611,7 +635,11 @@ it('opens optional details before focusing an invalid field', async () => {
   await input(el, `m-${fixture.distance.id}`, '1');
   await input(el, 'name', 'a'.repeat(201));
   await save(el);
-  expect(field(el, 'name').closest('details')!.open).toBe(true);
+  expect(
+    el
+      .shadowRoot!.querySelector('#activity-trigger')!
+      .getAttribute('aria-expanded'),
+  ).toBe('true');
   expect(el.shadowRoot!.activeElement).toBe(field(el, 'name'));
 });
 it('removes an archived tag and does not offer it as a new selection', async () => {
@@ -647,4 +675,153 @@ it('ignores a completed save after the editor has disconnected', async () => {
   complete(stored);
   await settle(el);
   expect(push).not.toHaveBeenCalled();
+});
+
+async function overallDuration(required = true) {
+  return fixture.deps.measurements.create(fixture.kind.id, {
+    ...validMeasurement,
+    name: 'Duration',
+    valueType: 'duration',
+    canonicalUnit: 'second',
+    displayUnit: 'hour-minute',
+    precision: null,
+    isRequired: required,
+  });
+}
+it('uses Timing as the only duration entry, mirrors seconds and retains specialised durations', async () => {
+  const duration = await overallDuration();
+  const moving = await fixture.deps.measurements.create(fixture.kind.id, {
+    ...validMeasurement,
+    name: 'Moving time',
+    valueType: 'duration',
+    canonicalUnit: 'second',
+    displayUnit: 'hour-minute',
+    precision: null,
+  });
+  const el = await page();
+  await selectKind(el);
+  expect(field(el, 'm-' + duration.id)).toBeNull();
+  expect(field(el, 'm-' + moving.id)).not.toBeNull();
+  await input(el, 'm-' + fixture.distance.id, '4.86');
+  await save(el);
+  expect(field(el, 'hours').getAttribute('aria-invalid')).toBe('true');
+  expect(
+    el
+      .shadowRoot!.querySelector('#timing-trigger')!
+      .getAttribute('aria-expanded'),
+  ).toBe('true');
+  await input(el, 'hours', '1');
+  await input(el, 'minutes', '2');
+  await input(el, 'seconds', '18');
+  await input(el, 'm-' + moving.id, '0:59:30');
+  await save(el);
+  const a = await fixture.api.getActivity(location.pathname.split('/')[2]!);
+  expect(a.durationSeconds).toBe(3738);
+  expect(
+    a.measurements.find((m) => m.measurementDefinitionId === duration.id)
+      ?.canonicalValue,
+  ).toBe(3738);
+  expect(
+    a.measurements.find((m) => m.measurementDefinitionId === moving.id)
+      ?.canonicalValue,
+  ).toBe(3570);
+});
+it('maps measurement-only historical duration into Timing and preserves it on save', async () => {
+  const duration = await overallDuration();
+  const a = await fixture.api.createActivity(
+    CreateActivityRequestSchema.parse({
+      activityKindId: fixture.kind.id,
+      activityDate: '2026-09-17',
+      measurements: [
+        {
+          measurementDefinitionId: duration.id,
+          valueType: 'duration',
+          value: 3738,
+          unitId: 'second',
+        },
+        {
+          measurementDefinitionId: fixture.distance.id,
+          valueType: 'decimal',
+          value: '4860',
+        },
+      ],
+    }),
+  );
+  const el = await page('/activities/' + a.id + '/edit');
+  expect(field(el, 'hours').value).toBe('1');
+  expect(field(el, 'seconds').value).toBe('18');
+  expect(el.dirty).toBe(false);
+  await input(el, 'notes', 'Preserved');
+  await save(el);
+  const stored = await fixture.api.getActivity(a.id);
+  expect(stored.durationSeconds).toBe(3738);
+  expect(
+    stored.measurements.find((m) => m.measurementDefinitionId === duration.id)
+      ?.canonicalValue,
+  ).toBe(3738);
+});
+it('preserves conflicting historical durations until Timing is explicitly changed, then synchronizes', async () => {
+  const duration = await overallDuration();
+  const a = await fixture.api.createActivity(
+    CreateActivityRequestSchema.parse({
+      activityKindId: fixture.kind.id,
+      activityDate: '2026-09-17',
+      durationSeconds: 3601,
+      measurements: [
+        {
+          measurementDefinitionId: duration.id,
+          valueType: 'duration',
+          value: 3500,
+          unitId: 'second',
+        },
+        {
+          measurementDefinitionId: fixture.distance.id,
+          valueType: 'decimal',
+          value: '4860',
+        },
+      ],
+    }),
+  );
+  const el = await page('/activities/' + a.id + '/edit');
+  await input(el, 'm-' + fixture.distance.id, '5');
+  await save(el);
+  let stored = await fixture.api.getActivity(a.id);
+  expect(stored.durationSeconds).toBe(3601);
+  expect(
+    stored.measurements.find((m) => m.measurementDefinitionId === duration.id)
+      ?.canonicalValue,
+  ).toBe(3500);
+  el.remove();
+  const edit = await page('/activities/' + a.id + '/edit');
+  await input(edit, 'seconds', '18');
+  await save(edit);
+  stored = await fixture.api.getActivity(a.id);
+  expect(stored.durationSeconds).toBe(3618);
+  expect(
+    stored.measurements.find((m) => m.measurementDefinitionId === duration.id)
+      ?.canonicalValue,
+  ).toBe(3618);
+});
+it('derives changed start times from the activity day in Helsinki independently of browser timezone', async () => {
+  expect(activityStartTime('2026-09-06T21:42:31.123Z')).toBe('00:42');
+  expect(activityStartInstant('2026-09-17', '18:15')).toBe(
+    '2026-09-17T15:15:00.000Z',
+  );
+  expect(activityStartInstant('2026-10-25', '03:30')).toBe(
+    '2026-10-25T00:30:00.000Z',
+  );
+  expect(() => activityStartInstant('2026-03-29', '03:30')).toThrow(
+    'does not exist',
+  );
+  expect(() => activityStartInstant('2026-09-17', '18:15:20')).toThrow();
+  const a = await existing();
+  const el = await page('/activities/' + a.id + '/edit');
+  expect(field(el, 'start').type).toBe('time');
+  expect(field(el, 'start').step).toBe('60');
+  await input(el, 'activityDate', '2026-09-18');
+  await input(el, 'start', '18:15');
+  await save(el);
+  expect((await fixture.api.getActivity(a.id)).startedAt).toBe(
+    '2026-09-18T15:15:00.000Z',
+  );
 });

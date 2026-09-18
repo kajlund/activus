@@ -287,6 +287,7 @@ export class JournalFilters extends LitElement {
           Apply filters</button
         ><button
           type="button"
+          ?hidden=${!Object.entries(this.draft).some(([key, value]) => key !== 'tagMatch' && (Array.isArray(value) ? value.length : value))}
           @click=${() => {
             this.draft = {};
             this.dateError = '';
