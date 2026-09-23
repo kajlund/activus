@@ -1,5 +1,6 @@
 import { afterEach, beforeAll, expect, it, vi } from 'vitest';
 import type { CreateGoalRequest, Goal } from '@activus/contracts';
+import { navigate } from '../src/routes/navigation.js';
 import { sameProgressCriteria } from '../src/features/goals/comparison.js';
 import { GoalFormPage } from '../src/features/goals/create-page.js';
 import { ClientError } from '../src/services/configuration-api.js';
@@ -88,6 +89,117 @@ afterEach(() => {
   document.body.replaceChildren();
   vi.restoreAllMocks();
   history.replaceState(null, '', '/');
+});
+
+it('retains input and exposes retry when dynamic goal references fail', async () => {
+  const { page, service } = await mountCreate();
+  const name = page.shadowRoot!.querySelector<HTMLInputElement>('[name=name]')!;
+  name.value = 'Keep my goal';
+  name.dispatchEvent(new Event('input', { bubbles: true }));
+  service.listVariants.mockRejectedValueOnce(
+    new ClientError('network', 'NETWORK_ERROR'),
+  );
+  const kind =
+    page.shadowRoot!.querySelector<HTMLSelectElement>('[name=kind]')!;
+  kind.value = kindId;
+  await page.kindChanged({ target: kind } as unknown as Event);
+  await settle(page);
+  expect(page.shadowRoot!.querySelector('[role=alert]')).not.toBeNull();
+  expect(name.value).toBe('Keep my goal');
+  expect(
+    page.shadowRoot!.querySelector<HTMLButtonElement>('button.primary')!
+      .disabled,
+  ).toBe(true);
+  const retry = [...page.shadowRoot!.querySelectorAll('button')].find((b) =>
+    b.textContent?.includes('Retry variants'),
+  )!;
+  retry.click();
+  await settle(page);
+  expect(page.shadowRoot!.querySelector('[role=alert]')).toBeNull();
+  expect(name.value).toBe('Keep my goal');
+  expect(
+    page.shadowRoot!.querySelector<HTMLButtonElement>('button.primary')!
+      .disabled,
+  ).toBe(false);
+});
+
+it('ignores stale goal-kind responses when the selection changes again', async () => {
+  const { page, service } = await mountCreate();
+  let release!: (value: {
+    items: { id: string; name: string; isArchived: boolean }[];
+  }) => void;
+  service.listVariants.mockImplementationOnce(
+    () =>
+      new Promise((resolve) => {
+        release = resolve;
+      }),
+  );
+  const first = page.kindChanged({
+    target: { value: kindId },
+  } as unknown as Event);
+  await page.kindChanged({ target: { value: '' } } as unknown as Event);
+  release({
+    items: [{ id: variantId, name: 'Stale variant', isArchived: false }],
+  });
+  await first;
+  await settle(page);
+  expect(page.variants).toEqual([]);
+  expect(page.measurements).toEqual([]);
+  expect(page.shadowRoot!.textContent).not.toContain('Stale variant');
+});
+
+it('blocks navigation and duplicate submission while a goal save is pending', async () => {
+  let reject!: (error: unknown) => void;
+  const update = vi.fn(
+    () =>
+      new Promise<Goal>((_, fail) => {
+        reject = fail;
+      }),
+  );
+  const { page } = await mount(api(update));
+  const name = page.shadowRoot!.querySelector<HTMLInputElement>('[name=name]')!;
+  name.value = 'Edited name';
+  name.dispatchEvent(new Event('input', { bubbles: true }));
+  submit(page);
+  await settle(page);
+  const path = location.pathname;
+  navigate('/settings');
+  expect(location.pathname).toBe(path);
+  expect(name.matches(':disabled')).toBe(true);
+  submit(page);
+  expect(update).toHaveBeenCalledTimes(1);
+  reject(new ClientError('network', 'NETWORK_ERROR'));
+  await settle(page);
+  expect(name.value).toBe('Edited name');
+  expect(name.matches(':disabled')).toBe(false);
+  expect(page.dirty).toBe(true);
+});
+
+it('also protects a pending save of an unchanged goal and releases the guard after failure', async () => {
+  let reject!: (error: unknown) => void;
+  const update = vi.fn(
+    () =>
+      new Promise<Goal>((_, fail) => {
+        reject = fail;
+      }),
+  );
+  const { page } = await mount(api(update));
+  expect(page.dirty).toBe(false);
+  submit(page);
+  await settle(page);
+  expect(
+    window.dispatchEvent(
+      new Event('before-route-change', { cancelable: true }),
+    ),
+  ).toBe(false);
+  reject(new Error('offline'));
+  await settle(page);
+  expect(page.dirty).toBe(false);
+  expect(
+    window.dispatchEvent(
+      new Event('before-route-change', { cancelable: true }),
+    ),
+  ).toBe(true);
 });
 
 it('keeps only archived references already stored by the goal visible and selected', async () => {
@@ -389,7 +501,7 @@ it('never stacks the recalculation and unsaved-change confirmations', async () =
   await settle(page);
   expect(page.confirming).toBe(true);
   const navigation = new Event('before-route-change', { cancelable: true });
-  expect(window.dispatchEvent(navigation)).toBe(true);
+  expect(window.dispatchEvent(navigation)).toBe(false);
   await settle(page);
   expect(page.leaving).toBe(false);
   expect(page.shadowRoot!.querySelectorAll('dialog')).toHaveLength(1);

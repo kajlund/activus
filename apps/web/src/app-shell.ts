@@ -1,5 +1,6 @@
 import { themeMode, applyTheme, selectTheme } from './theme.js';
 import { LitElement, css, html } from 'lit';
+import { pageHeadingStyles } from './components/page-heading.js';
 import {
   interceptNavigation,
   initializeNavigation,
@@ -113,10 +114,23 @@ export class ActivusApp extends LitElement {
     this.menuOpen = false;
   };
   private readonly outsideNavigation = (event: Event) => {
-    const header = this.renderRoot.querySelector('header');
-    if (this.menuOpen && header && !event.composedPath().includes(header))
+    const path = event.composedPath();
+    const navigation = this.renderRoot.querySelector('nav');
+    const toggle = this.renderRoot.querySelector('.menu-toggle');
+    if (this.menuOpen && !path.includes(navigation!) && !path.includes(toggle!))
       this.menuOpen = false;
   };
+  private async toggleNavigation() {
+    this.menuOpen = !this.menuOpen;
+    if (this.menuOpen) {
+      await this.updateComplete;
+      (
+        this.renderRoot.querySelector<HTMLAnchorElement>(
+          'nav a[aria-current="page"]',
+        ) ?? this.renderRoot.querySelector<HTMLAnchorElement>('nav a')
+      )?.focus();
+    }
+  }
   private readonly escapeNavigation = (event: KeyboardEvent) => {
     if (event.key === 'Escape' && this.menuOpen) {
       this.menuOpen = false;
@@ -129,6 +143,7 @@ export class ActivusApp extends LitElement {
     initializeNavigation();
     this.syncTheme();
     document.addEventListener('pointerdown', this.outsideNavigation);
+    document.addEventListener('focusin', this.outsideNavigation);
     document.addEventListener('keydown', this.escapeNavigation);
     this.desktop?.addEventListener('change', this.syncNavigation);
     window.addEventListener('popstate', this.onLocation);
@@ -139,6 +154,7 @@ export class ActivusApp extends LitElement {
     this.desktop?.removeEventListener('change', this.syncNavigation);
     window.removeEventListener('popstate', this.onLocation);
     document.removeEventListener('pointerdown', this.outsideNavigation);
+    document.removeEventListener('focusin', this.outsideNavigation);
     document.removeEventListener('keydown', this.escapeNavigation);
     super.disconnectedCallback();
   }
@@ -269,11 +285,20 @@ export class ActivusApp extends LitElement {
       padding: 24px 32px;
       min-width: 0;
     }
+    ${pageHeadingStyles}
     h1 {
-      font-family: var(--font-family-display);
-      font-size: var(--font-size-display);
-      font-weight: 400;
       margin: 0 0 24px;
+    }
+    main > a {
+      display: inline-flex;
+      align-items: center;
+      min-height: var(--control-height);
+      color: var(--color-primary);
+    }
+    main > h1,
+    main > p,
+    main > a {
+      margin-left: max(0px, calc((100% - 1040px) / 2));
     }
     p {
       color: var(--color-text-muted);
@@ -285,11 +310,6 @@ export class ActivusApp extends LitElement {
     .settings ul {
       list-style: none;
       padding: 0;
-    }
-    .settings h1 {
-      font-size: clamp(2rem, 4vw, 2.75rem);
-      line-height: 1.15;
-      letter-spacing: -0.035em;
     }
     .settings li a {
       text-decoration: none;
@@ -349,6 +369,8 @@ export class ActivusApp extends LitElement {
         top: 71px;
         right: 16px;
         width: min(320px, calc(100vw - 32px));
+        max-height: calc(100dvh - 88px);
+        overflow-y: auto;
         background: var(--color-surface-raised);
         padding: 8px;
         border: 1px solid var(--color-border);
@@ -385,7 +407,11 @@ export class ActivusApp extends LitElement {
     const current = destinations.find(([, path]) => path === pathname);
     return html`
       <a class="skip" href="#main" @click=${this.skipToMain}>Skip to content</a>
-      <div class="shell" @click=${interceptNavigation}>
+      <div
+        class="shell"
+        @click=${interceptNavigation}
+        @focusin=${this.outsideNavigation}
+      >
         <header>
           <a class="brand" href="/" aria-label="Activus home"
             ><img src="/icons/activus.svg" alt="" width="36" height="36" /><span
@@ -432,9 +458,7 @@ export class ActivusApp extends LitElement {
             title="Navigation"
             aria-expanded=${this.menuOpen}
             aria-controls="primary-navigation"
-            @click=${() => {
-              this.menuOpen = !this.menuOpen;
-            }}
+            @click=${this.toggleNavigation}
           >
             ${createElement(this.menuOpen ? X : Menu, { width: '22', height: '22', 'aria-hidden': 'true' })}
           </button>

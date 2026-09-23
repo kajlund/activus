@@ -1,4 +1,5 @@
 import { css } from 'lit';
+import { pageHeadingStyles } from '../../components/page-heading.js';
 export const managementStyles = css`
   :host {
     display: block;
@@ -17,12 +18,7 @@ export const managementStyles = css`
   p {
     margin: 0;
   }
-  h1 {
-    font-size: var(--font-size-page-title);
-    line-height: var(--line-height-page-title);
-    font-weight: 650;
-    overflow-wrap: anywhere;
-  }
+  ${pageHeadingStyles}
   h2 {
     font-size: var(--font-size-section-title);
     line-height: var(--line-height-section-title);
@@ -78,8 +74,11 @@ export const managementStyles = css`
   .primary:hover {
     background: var(--color-primary-hover);
   }
-  button:disabled {
-    opacity: 0.55;
+  button:disabled,
+  button:disabled:hover {
+    background: var(--color-control-disabled);
+    color: var(--color-text-disabled);
+    border-color: var(--color-border);
     cursor: default;
   }
   a {
@@ -88,6 +87,8 @@ export const managementStyles = css`
   button:focus-visible,
   a:focus-visible,
   input:focus-visible,
+  select:focus-visible,
+  textarea:focus-visible,
   summary:focus-visible {
     outline: 3px solid var(--color-focus);
     outline-offset: 3px;
@@ -126,6 +127,10 @@ export const managementStyles = css`
   }
   .field-title {
     font-weight: 600;
+  }
+  .required::after {
+    content: ' *';
+    color: var(--color-primary);
   }
   .check {
     display: flex;

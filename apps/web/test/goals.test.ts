@@ -130,6 +130,27 @@ it('keeps over-target values, caps only the visual bar, and distinguishes unavai
   expect(root.textContent).toContain('Progress unavailable');
   expect(root.querySelectorAll('progress')).toHaveLength(1);
 });
+
+it('retains existing goals during a background refresh and failed retry', async () => {
+  const { page, root, api } = await mount();
+  let reject!: (error: Error) => void;
+  api.overviewGoals.mockImplementationOnce(
+    () =>
+      new Promise((_, fail) => {
+        reject = fail;
+      }),
+  );
+  window.dispatchEvent(
+    new PageTransitionEvent('pageshow', { persisted: true }),
+  );
+  await settle(page);
+  expect(root.querySelectorAll('li')).toHaveLength(1);
+  expect(root.textContent).toContain('Updating goals');
+  reject(new Error('offline'));
+  await settle(page);
+  expect(root.querySelectorAll('li')).toHaveLength(1);
+  expect(root.querySelector('[role=alert]')).not.toBeNull();
+});
 it('shows recurring current-period facts and completed periods, without a cumulative bar', async () => {
   const recurring: GoalOverviewItem = {
     ...item,

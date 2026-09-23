@@ -2,13 +2,6 @@ import { css } from 'lit';
 
 // Scoped to configuration screens so journal and activity entry stay unchanged.
 export const configurationStyles = css`
-  h1 {
-    font-family: Georgia, serif;
-    font-weight: 400;
-    font-size: clamp(2rem, 4vw, 2.75rem);
-    line-height: 1.15;
-    letter-spacing: -0.035em;
-  }
   h2 {
     font-size: 1.2rem;
   }
@@ -91,12 +84,6 @@ export const configurationFormStyles = css`
   }
   input[type='number'] {
     max-width: 10rem;
-  }
-  .required::after {
-    content: '*';
-  }
-  .required {
-    color: var(--color-primary);
   }
   .form-section {
     border-top: 1px solid var(--color-border);

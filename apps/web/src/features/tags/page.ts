@@ -65,7 +65,7 @@ export class TagsPage extends LitElement {
     managementStyles,
     css`
       :host {
-        max-width: 960px;
+        max-width: 1040px;
         margin: 0 auto;
       }
       .back {
@@ -137,6 +137,9 @@ export class TagsPage extends LitElement {
       }
       .row:last-child {
         border-bottom: 0;
+      }
+      .row > .row-actions {
+        width: auto;
       }
       .name {
         min-width: 0;
@@ -591,7 +594,7 @@ export class TagsPage extends LitElement {
       <div aria-busy=${this.loading || this.pending}>
         ${
           this.tags.length
-            ? html`<ul aria-label="Tags">
+            ? html`<ul class="list" aria-label="Tags">
                 ${repeat(
                   this.tags,
                   (t) => t.id,

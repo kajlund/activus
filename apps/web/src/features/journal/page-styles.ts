@@ -10,12 +10,6 @@ export const journalPageStyles = [
     [hidden] {
       display: none !important;
     }
-    h1 {
-      font-family: var(--font-family-display);
-      font-size: var(--font-size-display);
-      line-height: var(--line-height-display);
-      font-weight: 400;
-    }
     header {
       align-items: center;
       margin-bottom: var(--space-6);

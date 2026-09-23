@@ -1,6 +1,7 @@
 import { LitElement, css, html, nothing, type PropertyValues } from 'lit';
 import { measurementUnits } from '@activus/contracts';
 import { goalStyles } from './styles.js';
+import { readError } from '../journal/presentation.js';
 import type {
   ActivityKind,
   ActivityVariant,
@@ -13,7 +14,6 @@ import { trapDialogFocus } from '../../components/dialog-focus.js';
 import {
   ClientError,
   configurationApi,
-  clientMessage,
   type ConfigurationApi,
   type GoalApi,
   type MeasurementApi,
@@ -54,6 +54,8 @@ export class GoalFormPage extends LitElement {
     leaving: { state: true },
     targetType: { state: true },
     scheduleMode: { state: true },
+    referencesLoading: { state: true },
+    referencesError: { state: true },
   };
   route = '/goals/new';
   api: GoalFormApi = configurationApi;
@@ -82,6 +84,10 @@ export class GoalFormPage extends LitElement {
   private selectedVariantId = '';
   private selectedMeasurementId = '';
   private selectedTagIds = new Set<string>();
+  private loadVersion = 0;
+  private referenceVersion = 0;
+  private referencesLoading = false;
+  private referencesError: unknown;
 
   get dirty() {
     return this.dirtyState;
@@ -101,9 +107,20 @@ export class GoalFormPage extends LitElement {
     void this.load();
   }
   override disconnectedCallback() {
+    this.loadVersion++;
+    this.referenceVersion++;
     this.removeGuards();
     this.pendingNavigation = undefined;
     super.disconnectedCallback();
+  }
+  protected override willUpdate(changed: PropertyValues) {
+    const previous = changed.get('route') as string | undefined;
+    if (
+      previous &&
+      new URL(previous, location.origin).pathname !==
+        new URL(this.route, location.origin).pathname
+    )
+      void this.load();
   }
   protected override updated(changed: PropertyValues) {
     if (
@@ -120,7 +137,11 @@ export class GoalFormPage extends LitElement {
   }
 
   private beforeRoute = (event: Event) => {
-    if (this.busy || this.confirming || !this.dirty) return;
+    if (this.busy || this.confirming) {
+      event.preventDefault();
+      return;
+    }
+    if (!this.dirty) return;
     if (this.leaving) {
       event.preventDefault();
       return;
@@ -132,12 +153,17 @@ export class GoalFormPage extends LitElement {
     this.leaving = true;
   };
   private beforeUnload = (event: BeforeUnloadEvent) => {
-    if (!this.dirty || this.busy || this.confirming) return;
+    if (!this.dirty && !this.busy) return;
     event.preventDefault();
     event.returnValue = '';
   };
   private syncGuards() {
-    if (!this.isConnected || !this.dirtyState || this.guardsRegistered) return;
+    if (!this.isConnected) return;
+    if (!this.dirtyState && !this.busy) {
+      this.removeGuards();
+      return;
+    }
+    if (this.guardsRegistered) return;
     window.addEventListener('before-route-change', this.beforeRoute);
     window.addEventListener('beforeunload', this.beforeUnload);
     this.guardsRegistered = true;
@@ -149,10 +175,8 @@ export class GoalFormPage extends LitElement {
     this.guardsRegistered = false;
   }
   private setDirty(value: boolean) {
-    if (this.dirtyState === value) return;
     this.dirtyState = value;
-    if (value) this.syncGuards();
-    else this.removeGuards();
+    this.syncGuards();
   }
   private updateDirty() {
     const form = this.renderRoot.querySelector<HTMLFormElement>('form');
@@ -165,6 +189,10 @@ export class GoalFormPage extends LitElement {
   private formChanged = () => this.updateDirty();
 
   async load() {
+    const version = ++this.loadVersion;
+    this.referenceVersion++;
+    this.referencesLoading = false;
+    this.referencesError = undefined;
     this.loading = true;
     this.loadFailed = false;
     this.error = undefined;
@@ -175,6 +203,7 @@ export class GoalFormPage extends LitElement {
         this.api.listKinds(!!goal),
         this.api.listTags(!!goal),
       ]);
+      if (version !== this.loadVersion) return;
       this.goal = goal;
       this.targetType = goal?.targetType ?? 'activity_count';
       this.scheduleMode = goal?.scheduleMode ?? 'fixed';
@@ -185,6 +214,8 @@ export class GoalFormPage extends LitElement {
       this.selectedVariantId = goal?.activityVariantId ?? '';
       this.selectedMeasurementId = goal?.measurementDefinitionId ?? '';
       this.selectedTagIds = new Set(goal?.tagIds ?? []);
+      this.variants = [];
+      this.measurements = [];
       this.kinds = kinds.items.filter(
         (item) => !item.isArchived || item.id === goal?.activityKindId,
       );
@@ -193,13 +224,15 @@ export class GoalFormPage extends LitElement {
       );
       if (goal) await this.loadKindReferences(goal.activityKindId, goal);
     } catch (error) {
+      if (version !== this.loadVersion) return;
       this.loadFailed = true;
       this.error = error;
     } finally {
-      this.loading = false;
+      if (version === this.loadVersion) this.loading = false;
     }
   }
   private async loadKindReferences(id: string, stored?: Goal) {
+    const version = ++this.referenceVersion;
     const [variants, result] = await Promise.all([
       this.api.listVariants(id, !!stored),
       this.api.listMeasurements(
@@ -208,6 +241,7 @@ export class GoalFormPage extends LitElement {
         stored?.activityVariantId ?? undefined,
       ),
     ]);
+    if (version !== this.referenceVersion) return;
     this.variants = variants.items.filter(
       (item) => !item.isArchived || item.id === stored?.activityVariantId,
     );
@@ -229,32 +263,47 @@ export class GoalFormPage extends LitElement {
     );
     this.variants = [];
     this.measurements = [];
-    if (id) await this.loadKindReferences(id);
     this.updateDirty();
+    await this.refreshReferences();
   }
   async variantChanged(event: Event) {
     const select = event.target as HTMLSelectElement;
     this.selectedVariantId = select.value;
     this.selectedMeasurementId = '';
-    const kind =
-      this.renderRoot.querySelector<HTMLSelectElement>('[name=kind]');
     this.variants = this.variants.filter(
       (item) => !item.isArchived || item.id === select.value,
     );
-    if (!kind?.value) return;
-    const result = await this.api.listMeasurements(
-      kind.value,
-      false,
-      select.value || undefined,
-    );
-    this.measurements = result.items.filter(
-      (item) =>
-        ['decimal', 'integer'].includes(item.valueType) &&
-        item.aggregation === 'total' &&
-        (select.value ? true : item.activityVariantId == null) &&
-        !item.isArchived,
-    );
+    this.measurements = [];
     this.updateDirty();
+    await this.refreshReferences(true);
+  }
+  private async refreshReferences(variantOnly = false) {
+    const version = ++this.referenceVersion;
+    const kindId = this.selectedKindId;
+    const variantId = this.selectedVariantId;
+    this.referencesError = undefined;
+    this.referencesLoading = !!kindId;
+    if (!kindId) return;
+    try {
+      const [variants, result] = await Promise.all([
+        variantOnly ? undefined : this.api.listVariants(kindId, false),
+        this.api.listMeasurements(kindId, false, variantId || undefined),
+      ]);
+      if (version !== this.referenceVersion) return;
+      if (variants)
+        this.variants = variants.items.filter((item) => !item.isArchived);
+      this.measurements = result.items.filter(
+        (item) =>
+          ['decimal', 'integer'].includes(item.valueType) &&
+          item.aggregation === 'total' &&
+          (variantId ? true : item.activityVariantId == null) &&
+          !item.isArchived,
+      );
+    } catch (error) {
+      if (version === this.referenceVersion) this.referencesError = error;
+    } finally {
+      if (version === this.referenceVersion) this.referencesLoading = false;
+    }
   }
   private measurementChanged(event: Event) {
     const id = (event.target as HTMLSelectElement).value;
@@ -306,7 +355,14 @@ export class GoalFormPage extends LitElement {
   }
   async save(event: SubmitEvent) {
     event.preventDefault();
-    if (this.busy || this.loading || this.leaving) return;
+    if (
+      this.busy ||
+      this.loading ||
+      this.leaving ||
+      this.referencesLoading ||
+      this.referencesError
+    )
+      return;
     const input = this.request(event.currentTarget as HTMLFormElement);
     if (this.original && !sameProgressCriteria(this.original, input)) {
       this.pending = input;
@@ -354,6 +410,7 @@ export class GoalFormPage extends LitElement {
     if (this.busy) return;
     const previous = this.original;
     this.busy = true;
+    this.syncGuards();
     this.error = undefined;
     try {
       if (this.goalId) {
@@ -369,6 +426,7 @@ export class GoalFormPage extends LitElement {
         this.goal = await this.api.createGoal(input);
         this.baseline = input;
       }
+      this.busy = false;
       this.setDirty(false);
       let destination =
         safeGoalDetailReturn(
@@ -394,6 +452,7 @@ export class GoalFormPage extends LitElement {
       this.error = error;
     } finally {
       this.busy = false;
+      await this.updateComplete;
       this.updateDirty();
     }
   }
@@ -405,10 +464,12 @@ export class GoalFormPage extends LitElement {
   }
 
   override render() {
-    if (this.loading) return html`<p role="status">Loading goal…</p>`;
+    if (this.loading)
+      return html`<h1>${this.editing ? 'Edit goal' : 'Create goal'}</h1>
+        <p role="status">Loading goal…</p>`;
     if (this.loadFailed)
       return html`${this.error instanceof ClientError && this.error.kind === 'not-found' ? html`<h1>Goal not found</h1>` : html`<h1>Goal unavailable</h1>`}
-        <p role="alert">${clientMessage(this.error)}</p>
+        ${readError(this.error)}
         <button @click=${this.load}>Retry goal</button>`;
     const measurement = this.measurements.find(
       (m) => m.id === this.selectedMeasurementId,
@@ -426,217 +487,226 @@ export class GoalFormPage extends LitElement {
         </div>
       </header>
       <form
+        aria-busy=${this.busy}
         @submit=${this.save}
         @input=${this.formChanged}
         @change=${this.formChanged}
       >
-        <section>
-          <h2>Goal</h2>
-          <div class="fields">
-            <label
-              >Name *
-              <input
-                required
-                name="name"
-                maxlength="120"
-                .value=${this.value('name')} /></label
-            ><label
-              >Description
-              <textarea
-                name="description"
-                maxlength="10000"
-                .value=${this.value('description')}
-              ></textarea>
-            </label>
-          </div>
-        </section>
-        <section>
-          <h2>What counts</h2>
-          <div class="fields">
-            <label
-              >Activity kind *
-              <select required name="kind" @change=${this.kindChanged}>
-                <option value="" .selected=${!this.selectedKindId}>
-                  Choose a kind
-                </option>
-                ${this.kinds.map((item) => html`<option value=${item.id} .selected=${item.id === this.selectedKindId}>${this.label(item)}</option>`)}
-              </select></label
-            >
-            <label
-              >Variant
-              <select name="variant" @change=${this.variantChanged}>
-                <option value="" .selected=${!this.selectedVariantId}>
-                  Any variant
-                </option>
-                ${this.variants.map((item) => html`<option value=${item.id} .selected=${item.id === this.selectedVariantId}>${this.label(item)}</option>`)}
-              </select></label
-            >
-            <fieldset class="tag-options">
-              <legend>Required tags</legend>
-              <p class="help">Activities must include every selected tag.</p>
-              ${this.tags.map((item) => html`<label class="choice"><input type="checkbox" name="tag" value=${item.id} .checked=${this.selectedTagIds.has(item.id)} @change=${this.tagChanged} /> ${this.label(item)}</label>`)}
-            </fieldset>
-          </div>
-        </section>
-        <section>
-          <h2>What to reach</h2>
-          <div class="fields">
-            <fieldset>
-              <legend>Target type *</legend>
-              ${[
-                ['activity_count', 'Number of activities'],
-                ['total_duration', 'Total duration'],
-                ['measurement_total', 'Measurement total'],
-              ].map(
-                ([value, label]) =>
-                  html`<label class="choice"
-                    ><input
-                      type="radio"
-                      name="targetType"
-                      @change=${async (event: Event) => {
-                        this.targetType = (event.target as HTMLInputElement)
-                          .value as Goal['targetType'];
-                        await this.updateComplete;
-                        this.updateDirty();
-                      }}
-                      value=${value}
-                      .checked=${this.targetType === value}
-                    />
-                    ${label}</label
-                  >`,
-              )}
-            </fieldset>
-            <label
-              class="number-field"
-              ?hidden=${this.targetType === 'total_duration'}
-              >Target value *
-              <span class="value-unit"
-                ><input
-                  ?required=${this.targetType !== 'total_duration'}
-                  ?disabled=${this.targetType === 'total_duration'}
-                  aria-describedby="target-unit"
-                  name="value"
-                  inputmode="decimal"
-                  .value=${goal?.targetType === 'total_duration' ? '' : this.value('targetValue')}
-                /><span id="target-unit"
-                  >${this.targetType === 'activity_count' ? 'activities' : (unit?.label ?? '')}</span
-                ></span
-              ></label
-            >
-            <div
-              class="duration-fields"
-              ?hidden=${this.targetType !== 'total_duration'}
-            >
+        <fieldset class="goal-fields" ?disabled=${this.busy}>
+          <section>
+            <h2>Goal</h2>
+            <div class="fields">
               <label
-                >Hours
+                >Name *
                 <input
-                  name="hours"
-                  ?disabled=${this.targetType !== 'total_duration'}
-                  type="number"
-                  min="0"
-                  .value=${String(Math.floor(duration / 3600))} /></label
+                  required
+                  name="name"
+                  maxlength="120"
+                  .value=${this.value('name')} /></label
               ><label
-                >Minutes
-                <input
-                  name="minutes"
-                  ?disabled=${this.targetType !== 'total_duration'}
-                  type="number"
-                  min="0"
-                  max="59"
-                  .value=${String(Math.floor((duration % 3600) / 60))}
-              /></label>
-              <label
-                >Seconds<input
-                  name="seconds"
-                  type="number"
-                  min="0"
-                  max="59"
-                  ?disabled=${this.targetType !== 'total_duration'}
-                  .value=${String(duration % 60)}
-              /></label>
+                >Description
+                <textarea
+                  name="description"
+                  maxlength="10000"
+                  .value=${this.value('description')}
+                ></textarea>
+              </label>
             </div>
-            <label ?hidden=${this.targetType !== 'measurement_total'}
-              >Measurement *
-              <select
-                ?required=${this.targetType === 'measurement_total'}
-                ?disabled=${this.targetType !== 'measurement_total'}
-                name="measurement"
-                @change=${this.measurementChanged}
+          </section>
+          <section>
+            <h2>What counts</h2>
+            <div class="fields">
+              <label
+                >Activity kind *
+                <select required name="kind" @change=${this.kindChanged}>
+                  <option value="" .selected=${!this.selectedKindId}>
+                    Choose a kind
+                  </option>
+                  ${this.kinds.map((item) => html`<option value=${item.id} .selected=${item.id === this.selectedKindId}>${this.label(item)}</option>`)}
+                </select></label
               >
-                <option value="" .selected=${!this.selectedMeasurementId}>
-                  Choose a measurement
-                </option>
-                ${this.measurements.map((item) => html`<option value=${item.id} .selected=${item.id === this.selectedMeasurementId}>${this.label(item)} ${measurementUnits.find((u) => u.id === item.canonicalUnit)?.label ?? ''}</option>`)}
-              </select></label
-            >
-          </div>
-        </section>
-        <section>
-          <h2>When</h2>
-          <div class="fields when-fields">
-            <fieldset>
-              <legend>Schedule *</legend>
-              ${[
-                ['fixed', 'Fixed total'],
-                ['recurring', 'Recurring'],
-              ].map(
-                ([value, label]) =>
-                  html`<label class="choice"
-                    ><input
-                      type="radio"
-                      name="schedule"
-                      @change=${async (event: Event) => {
-                        this.scheduleMode = (event.target as HTMLInputElement)
-                          .value as Goal['scheduleMode'];
-                        await this.updateComplete;
-                        this.updateDirty();
-                      }}
-                      value=${value}
-                      .checked=${this.scheduleMode === value}
-                    />
-                    ${label}</label
-                  >`,
-              )}
-            </fieldset>
-            <label ?hidden=${this.scheduleMode !== 'recurring'}
-              >Recurrence *
-              <select
-                name="recurrence"
-                ?disabled=${this.scheduleMode !== 'recurring'}
-                .value=${this.value('recurrencePeriod', 'week')}
+              <label
+                >Variant
+                <select name="variant" @change=${this.variantChanged}>
+                  <option value="" .selected=${!this.selectedVariantId}>
+                    Any variant
+                  </option>
+                  ${this.variants.map((item) => html`<option value=${item.id} .selected=${item.id === this.selectedVariantId}>${this.label(item)}</option>`)}
+                </select></label
               >
-                <option value="week">Week</option>
-                <option value="month">Month</option>
-                <option value="year">Year</option>
-              </select></label
-            >
-            <label
-              >Start *
-              <input
-                required
-                type="date"
-                name="start"
-                .value=${this.value('startDate')} /></label
-            ><label
-              >End *
-              <input
-                required
-                type="date"
-                name="end"
-                .value=${this.value('endDate')}
-            /></label>
-            <p class="help full" ?hidden=${this.scheduleMode !== 'recurring'}>
-              Targets reset each calendar period. Boundary periods include only
-              dates within the goal range.
-            </p>
-          </div>
-        </section>
-        ${this.error ? html`<p role="alert">${clientMessage(this.error)}</p>` : nothing}
+              <fieldset class="tag-options">
+                <legend>Required tags</legend>
+                <p class="help">Activities must include every selected tag.</p>
+                ${this.tags.map((item) => html`<label class="choice"><input type="checkbox" name="tag" value=${item.id} .checked=${this.selectedTagIds.has(item.id)} @change=${this.tagChanged} /> ${this.label(item)}</label>`)}
+              </fieldset>
+              ${this.referencesLoading ? html`<p class="help full" role="status">Loading variants and measurements…</p>` : nothing}
+              ${this.referencesError ? html`<div class="full">${readError(this.referencesError)}<button type="button" @click=${() => this.refreshReferences()}>Retry variants and measurements</button></div>` : nothing}
+            </div>
+          </section>
+          <section>
+            <h2>What to reach</h2>
+            <div class="fields">
+              <fieldset>
+                <legend>Target type *</legend>
+                ${[
+                  ['activity_count', 'Number of activities'],
+                  ['total_duration', 'Total duration'],
+                  ['measurement_total', 'Measurement total'],
+                ].map(
+                  ([value, label]) =>
+                    html`<label class="choice"
+                      ><input
+                        type="radio"
+                        name="targetType"
+                        @change=${async (event: Event) => {
+                          this.targetType = (event.target as HTMLInputElement)
+                            .value as Goal['targetType'];
+                          await this.updateComplete;
+                          this.updateDirty();
+                        }}
+                        value=${value}
+                        .checked=${this.targetType === value}
+                      />
+                      ${label}</label
+                    >`,
+                )}
+              </fieldset>
+              <label
+                class="number-field"
+                ?hidden=${this.targetType === 'total_duration'}
+                >Target value *
+                <span class="value-unit"
+                  ><input
+                    ?required=${this.targetType !== 'total_duration'}
+                    ?disabled=${this.targetType === 'total_duration'}
+                    aria-describedby="target-unit"
+                    name="value"
+                    inputmode="decimal"
+                    .value=${goal?.targetType === 'total_duration' ? '' : this.value('targetValue')}
+                  /><span id="target-unit"
+                    >${this.targetType === 'activity_count' ? 'activities' : (unit?.label ?? '')}</span
+                  ></span
+                ></label
+              >
+              <div
+                class="duration-fields"
+                ?hidden=${this.targetType !== 'total_duration'}
+              >
+                <label
+                  >Hours
+                  <input
+                    name="hours"
+                    ?disabled=${this.targetType !== 'total_duration'}
+                    type="number"
+                    min="0"
+                    .value=${String(Math.floor(duration / 3600))} /></label
+                ><label
+                  >Minutes
+                  <input
+                    name="minutes"
+                    ?disabled=${this.targetType !== 'total_duration'}
+                    type="number"
+                    min="0"
+                    max="59"
+                    .value=${String(Math.floor((duration % 3600) / 60))}
+                /></label>
+                <label
+                  >Seconds<input
+                    name="seconds"
+                    type="number"
+                    min="0"
+                    max="59"
+                    ?disabled=${this.targetType !== 'total_duration'}
+                    .value=${String(duration % 60)}
+                /></label>
+              </div>
+              <label ?hidden=${this.targetType !== 'measurement_total'}
+                >Measurement *
+                <select
+                  ?required=${this.targetType === 'measurement_total'}
+                  ?disabled=${this.targetType !== 'measurement_total'}
+                  name="measurement"
+                  @change=${this.measurementChanged}
+                >
+                  <option value="" .selected=${!this.selectedMeasurementId}>
+                    Choose a measurement
+                  </option>
+                  ${this.measurements.map((item) => html`<option value=${item.id} .selected=${item.id === this.selectedMeasurementId}>${this.label(item)} ${measurementUnits.find((u) => u.id === item.canonicalUnit)?.label ?? ''}</option>`)}
+                </select></label
+              >
+            </div>
+          </section>
+          <section>
+            <h2>When</h2>
+            <div class="fields when-fields">
+              <fieldset>
+                <legend>Schedule *</legend>
+                ${[
+                  ['fixed', 'Fixed total'],
+                  ['recurring', 'Recurring'],
+                ].map(
+                  ([value, label]) =>
+                    html`<label class="choice"
+                      ><input
+                        type="radio"
+                        name="schedule"
+                        @change=${async (event: Event) => {
+                          this.scheduleMode = (event.target as HTMLInputElement)
+                            .value as Goal['scheduleMode'];
+                          await this.updateComplete;
+                          this.updateDirty();
+                        }}
+                        value=${value}
+                        .checked=${this.scheduleMode === value}
+                      />
+                      ${label}</label
+                    >`,
+                )}
+              </fieldset>
+              <label ?hidden=${this.scheduleMode !== 'recurring'}
+                >Recurrence *
+                <select
+                  name="recurrence"
+                  ?disabled=${this.scheduleMode !== 'recurring'}
+                  .value=${this.value('recurrencePeriod', 'week')}
+                >
+                  <option value="week">Week</option>
+                  <option value="month">Month</option>
+                  <option value="year">Year</option>
+                </select></label
+              >
+              <label
+                >Start *
+                <input
+                  required
+                  type="date"
+                  name="start"
+                  .value=${this.value('startDate')} /></label
+              ><label
+                >End *
+                <input
+                  required
+                  type="date"
+                  name="end"
+                  .value=${this.value('endDate')}
+              /></label>
+              <p class="help full" ?hidden=${this.scheduleMode !== 'recurring'}>
+                Targets reset each calendar period. Boundary periods include
+                only dates within the goal range.
+              </p>
+            </div>
+          </section>
+        </fieldset>
+        ${this.error ? readError(this.error) : nothing}
         <footer>
-          <button class="primary" ?disabled=${this.busy || this.loading}>
+          <button
+            class="primary"
+            ?disabled=${this.busy || this.loading || this.referencesLoading || !!this.referencesError}
+          >
             ${this.busy ? 'Saving…' : this.editing ? 'Save changes' : 'Create goal'}</button
           ><button
             type="button"
+            ?disabled=${this.busy}
             @click=${(event: Event) => navigate(goalReturn(this.route), event.currentTarget as HTMLElement)}
           >
             Cancel
@@ -707,6 +777,13 @@ export class GoalFormPage extends LitElement {
     css`
       :host {
         max-width: 880px;
+      }
+      .goal-fields {
+        display: block;
+        border: 0;
+        padding: 0;
+        margin: 0;
+        min-width: 0;
       }
       section {
         display: grid;

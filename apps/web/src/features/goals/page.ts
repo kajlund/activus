@@ -43,6 +43,7 @@ export class GoalsPage extends LitElement {
   private controller: AbortController | undefined;
   private trigger: HTMLElement | undefined;
   private stopRestoredPage: (() => void) | undefined;
+  private loadedView: string | undefined;
   override connectedCallback() {
     super.connectedCallback();
     this.stopRestoredPage = onRestoredPage(() => void this.load());
@@ -72,7 +73,7 @@ export class GoalsPage extends LitElement {
     const controller = (this.controller = new AbortController());
     this.loading = true;
     this.error = undefined;
-    this.data = undefined;
+    if (this.loadedView !== this.view) this.data = undefined;
     try {
       const data = await this.api.overviewGoals(
         { lifecycle: this.view },
@@ -80,6 +81,7 @@ export class GoalsPage extends LitElement {
       );
       if (controller.signal.aborted) return;
       this.data = data;
+      this.loadedView = this.view;
     } catch (error) {
       if (!controller.signal.aborted) this.error = error;
     } finally {
@@ -126,7 +128,9 @@ export class GoalsPage extends LitElement {
     if (!progress)
       return html`<p>
         Progress unavailable.
-        <button @click=${this.load}>Refresh progress</button>
+        <button ?disabled=${this.loading} @click=${this.load}>
+          Refresh progress
+        </button>
       </p>`;
     const current =
       progress.scheduleMode === 'fixed' ? progress : progress.currentPeriod;
@@ -243,12 +247,12 @@ export class GoalsPage extends LitElement {
       </nav>
       <p class="announcement" role="status">
         ${this.status || (saved ? 'Goal saved.' : '')}
-        ${this.loading ? 'Loading goals…' : this.data ? `${this.data.items.length} ${this.view} goals` : ''}
+        ${this.loading ? (this.data ? 'Updating goals…' : 'Loading goals…') : this.data ? `${this.data.items.length} ${this.view} ${this.data.items.length === 1 ? 'goal' : 'goals'}` : ''}
       </p>
       ${this.error ? html`<p role="alert">${clientMessage(this.error)} <button @click=${this.load}>Retry</button></p>` : nothing}
       ${this.actionError && !this.pending ? html`<p role="alert">${clientMessage(this.actionError)}</p>` : nothing}
       ${
-        !this.loading && this.data
+        this.data
           ? this.data.items.length
             ? html`<ul>
                 ${repeat(

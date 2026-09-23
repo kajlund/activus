@@ -10,12 +10,6 @@ export const goalStyles = [
       max-width: 1040px;
       margin: auto;
     }
-    h1 {
-      font-family: var(--font-family-display);
-      font-size: var(--font-size-display);
-      line-height: var(--line-height-display);
-      font-weight: 400;
-    }
     h2 {
       font-size: var(--font-size-component-title);
       line-height: var(--line-height-component-title);

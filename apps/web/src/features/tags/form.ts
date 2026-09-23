@@ -80,6 +80,11 @@ export class TagForm extends LitElement {
       .selection {
         min-height: 1.5em;
       }
+      @media (max-width: 360px) {
+        .colours {
+          grid-template-columns: minmax(0, 1fr);
+        }
+      }
     `,
   ];
   protected override willUpdate(changed: PropertyValues) {
@@ -193,7 +198,8 @@ export class TagForm extends LitElement {
       <fieldset ?disabled=${this.busy}>
         <legend>Tag details</legend>
         <div class="field">
-          <label class="field-title" for="name">Name</label
+          <label class="field-title" for="name"
+            >Name <span class="required" aria-hidden="true"></span></label
           ><input
             id="name"
             required
@@ -208,7 +214,7 @@ export class TagForm extends LitElement {
           /><span id="name-error" class="error">${nameError}</span>
         </div>
         <fieldset aria-describedby="colour-help colour-error">
-          <legend>Colour (optional)</legend>
+          <legend>Colour</legend>
           <div class="colours">
             ${this.choice('No colour', null)}${chartColours.map(([label, color]) => this.choice(label, color))}${custom ? this.choice('Existing colour', existing) : nothing}
           </div>

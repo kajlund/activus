@@ -3,6 +3,7 @@ import type { MeasurementApi } from '../../services/configuration-api.js';
 import { trapDialogFocus } from '../../components/dialog-focus.js';
 import { LitElement, html, css, nothing, type PropertyValues } from 'lit';
 import { repeat } from 'lit/directives/repeat.js';
+import { ChevronRight, createElement } from 'lucide';
 import {
   ActivityKindSchema,
   type ActivityKind,
@@ -569,7 +570,7 @@ export class ActivityKindsPage extends LitElement {
                         role="img"
                         aria-label=${`Colour ${k.color}`}
                       ></span
-                      ><span class="chevron" aria-hidden="true">›</span></a
+                      >${createElement(ChevronRight, { class: 'chevron', width: '20', height: '20', 'aria-hidden': 'true' })}</a
                     >
                   </li>`,
               )}
@@ -588,7 +589,9 @@ export class ActivityKindsPage extends LitElement {
   }
   private renderDetail() {
     const kind = this.kind;
-    return html`<a class="back" href=${this.listUrl}>← Activity kinds</a> ${
+    return html`<a class="back" href=${this.listUrl}>← Activity kinds</a>
+      ${!kind && !(this.error instanceof ClientError && this.error.kind === 'not-found') ? html`<h1>Activity kind</h1>` : nothing}
+      ${
         this.error instanceof ClientError && this.error.kind === 'not-found'
           ? html`<div class="not-found">
               <h1 tabindex="-1">Activity kind not found</h1>

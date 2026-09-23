@@ -1191,11 +1191,6 @@ export class ActivityEditorPage extends LitElement {
         border-radius: var(--radius-md);
       }
 
-      h1 {
-        font-family: var(--font-family-display);
-        font-size: 32px;
-        font-weight: 400;
-      }
       .status:empty {
         display: none;
       }
