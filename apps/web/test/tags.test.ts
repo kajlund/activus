@@ -60,7 +60,11 @@ function input(el: LitElement, id: string, value: string) {
   field.dispatchEvent(new Event('input', { bubbles: true }));
 }
 async function editor(el: TagsPage, action = 'New tag') {
-  button(el.shadowRoot!, action).click();
+  if (action === 'Edit tag')
+    el.shadowRoot!.querySelector<HTMLButtonElement>(
+      '[aria-label^="Edit tag " ]',
+    )!.click();
+  else button(el.shadowRoot!, action).click();
   await settle(el);
   const f = el.shadowRoot!.querySelector<TagForm>('tag-form')!;
   await settle(f);
@@ -71,8 +75,8 @@ const submit = (f: TagForm) =>
     .shadowRoot!.querySelector('form')!
     .dispatchEvent(new Event('submit', { cancelable: true }));
 const names = (el: TagsPage) =>
-  [...el.shadowRoot!.querySelectorAll('.name strong')].map(
-    (n) => n.textContent,
+  [...el.shadowRoot!.querySelectorAll('.name .name-button')].map((n) =>
+    n.textContent?.trim(),
   );
 
 it('renders first-use and all-archived empty states without invented tags', async () => {

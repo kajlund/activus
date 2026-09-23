@@ -279,12 +279,37 @@ export class ActivusApp extends LitElement {
       color: var(--color-text-muted);
     }
     .settings {
-      max-width: 960px;
+      max-width: 1040px;
       margin: auto;
     }
     .settings ul {
       list-style: none;
       padding: 0;
+    }
+    .settings h1 {
+      font-size: clamp(2rem, 4vw, 2.75rem);
+      line-height: 1.15;
+      letter-spacing: -0.035em;
+    }
+    .settings li a {
+      text-decoration: none;
+    }
+    .settings li a:hover strong {
+      text-decoration: underline;
+    }
+    .settings h2 {
+      font-size: 1.2rem;
+      margin: 32px 0 8px;
+    }
+    .settings li a strong {
+      display: block;
+      font-weight: 600;
+    }
+    .settings li a span {
+      display: block;
+      margin-top: 6px;
+      color: var(--color-text-muted);
+      font-size: 0.9rem;
     }
     .settings li a {
       display: block;
@@ -457,13 +482,31 @@ export class ActivusApp extends LitElement {
                                       Manage the configuration used by your
                                       journal.
                                     </p>
+                                    <h2>Journal configuration</h2>
                                     <ul aria-label="Configuration">
                                       <li>
-                                        <a href="/activity-kinds"
-                                          >Activity kinds and measurements</a
+                                        <a
+                                          href="/activity-kinds"
+                                          aria-label="Activity kinds and measurements"
+                                          ><strong
+                                            >Activity kinds and
+                                            measurements</strong
+                                          ><span
+                                            >Manage kinds, variants and the
+                                            values recorded with each
+                                            activity.</span
+                                          ></a
                                         >
                                       </li>
-                                      <li><a href="/tags">Tags</a></li>
+                                      <li>
+                                        <a href="/tags" aria-label="Tags"
+                                          ><strong>Tags</strong
+                                          ><span
+                                            >Organise activities with reusable
+                                            labels and colours.</span
+                                          ></a
+                                        >
+                                      </li>
                                     </ul>
                                   </div>`
                                 : current

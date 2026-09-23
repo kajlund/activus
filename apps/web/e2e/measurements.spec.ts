@@ -23,11 +23,11 @@ test('configure parent and variant measurements, primary, history edits and arch
     .getByLabel('Display unit', { exact: true })
     .selectOption('kilometre');
   await dialog.getByLabel('Required for normal entries').check();
-  await dialog.getByText('Advanced settings', { exact: true }).click();
-  await dialog.getByLabel('Aggregation', { exact: true }).selectOption('total');
+  await dialog.getByText('Entry and summary settings', { exact: true }).click();
+  await dialog.getByRole('radio', { name: 'Total', exact: true }).check();
   await dialog
-    .getByLabel('Personal bests', { exact: true })
-    .selectOption('highest');
+    .getByRole('radio', { name: 'Highest value is better', exact: true })
+    .check();
   await dialog.getByLabel('Minimum (km)', { exact: true }).fill('0');
   await expect(
     dialog.getByLabel('Precision (0–6 decimal places)', { exact: true }),
@@ -50,16 +50,20 @@ test('configure parent and variant measurements, primary, history edits and arch
   await dialog
     .getByLabel('Display unit', { exact: true })
     .selectOption('count');
-  await dialog.getByText('Advanced settings', { exact: true }).click();
-  await dialog.getByLabel('Aggregation', { exact: true }).selectOption('total');
+  await dialog.getByText('Entry and summary settings', { exact: true }).click();
+  await dialog.getByRole('radio', { name: 'Total', exact: true }).check();
   await dialog
     .getByRole('button', { name: 'Add measurement', exact: true })
     .click();
   await expect(dialog).not.toBeVisible();
   await section
-    .getByLabel('Measurement actions for Distance', { exact: true })
-    .click();
-  await section
+    .getByRole('listitem')
+    .filter({
+      has: page.getByRole('button', {
+        name: 'Edit measurement Distance',
+        exact: true,
+      }),
+    })
     .getByRole('button', { name: 'Set as primary', exact: true })
     .click();
   await expect(section.getByText('Primary', { exact: true })).toBeVisible();
@@ -107,10 +111,7 @@ test('configure parent and variant measurements, primary, history edits and arch
   const distance = api.measurements.find((m) => m.name === 'Distance')!;
   api.history.add(distance.id);
   await section
-    .getByLabel('Measurement actions for Distance', { exact: true })
-    .click();
-  await section
-    .getByRole('button', { name: 'Edit measurement', exact: true })
+    .getByRole('button', { name: 'Edit measurement Distance', exact: true })
     .click();
   await dialog.getByLabel('Required for normal entries').uncheck();
   await dialog
@@ -121,9 +122,13 @@ test('configure parent and variant measurements, primary, history edits and arch
     false,
   );
   await section
-    .getByLabel('Measurement actions for Steps', { exact: true })
-    .click();
-  await section
+    .getByRole('listitem')
+    .filter({
+      has: page.getByRole('button', {
+        name: 'Edit measurement Steps',
+        exact: true,
+      }),
+    })
     .getByRole('button', { name: 'Archive measurement', exact: true })
     .click();
   await dialog
@@ -136,9 +141,6 @@ test('configure parent and variant measurements, primary, history edits and arch
   ).toBeFocused();
   await section.getByLabel('Show archived measurements').check();
   await expect(section.getByText('Archived', { exact: true })).toBeVisible();
-  await section
-    .getByLabel('Measurement actions for Steps', { exact: true })
-    .click();
   await section
     .getByRole('button', { name: 'Restore measurement', exact: true })
     .click();
@@ -175,7 +177,7 @@ test('measurement dirty dismissal, history locks, duration and long-name layout'
     .getByLabel('Value type', { exact: true })
     .selectOption('duration');
   await expect(dialog.getByLabel('Display format')).toHaveValue('hour-minute');
-  await dialog.getByText('Advanced settings', { exact: true }).click();
+  await dialog.getByText('Entry and summary settings', { exact: true }).click();
   await dialog.getByLabel('Minimum (h:mm:ss)', { exact: true }).fill('0:05:00');
   await dialog
     .getByLabel('Maximum (h:mm:ss)', { exact: true })
@@ -192,12 +194,12 @@ test('measurement dirty dismissal, history locks, duration and long-name layout'
   expect(definition.minimumValue).toBe(300);
   api.history.add(definition.id);
   await section
-    .getByLabel(`Measurement actions for ${definition.name}`, { exact: true })
+    .getByRole('button', {
+      name: `Edit measurement ${definition.name}`,
+      exact: true,
+    })
     .click();
-  await section
-    .getByRole('button', { name: 'Edit measurement', exact: true })
-    .click();
-  await dialog.getByText('Advanced settings', { exact: true }).click();
+  await dialog.getByText('Entry and summary settings', { exact: true }).click();
   await dialog
     .getByLabel('Maximum (h:mm:ss)', { exact: true })
     .fill('13:00:00');

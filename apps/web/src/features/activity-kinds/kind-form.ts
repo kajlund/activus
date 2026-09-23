@@ -9,6 +9,7 @@ import {
   clientMessage,
 } from '../../services/configuration-api.js';
 import { managementStyles } from './styles.js';
+import { configurationFormStyles } from './configuration-styles.js';
 import { activityIcon, iconLabels } from './icons.js';
 import { chartColours as palette } from '../../components/chart-colours.js';
 export class KindForm extends LitElement {
@@ -106,6 +107,41 @@ export class KindForm extends LitElement {
         border-top: 1px solid var(--color-border);
       }
     `,
+    configurationFormStyles,
+    css`
+      .appearance {
+        display: grid;
+        grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr);
+        gap: 24px;
+        align-items: start;
+      }
+      .icon-options {
+        grid-template-columns: 1fr;
+        gap: 6px;
+      }
+      .icon-option {
+        min-height: 44px;
+        padding: 8px;
+      }
+      .icon-option svg {
+        flex-shrink: 0;
+      }
+      .appearance > .field {
+        min-width: 0;
+      }
+      .preview {
+        flex-wrap: wrap;
+      }
+      .preview .help {
+        overflow-wrap: anywhere;
+        min-width: 0;
+      }
+      @media (max-width: 600px) {
+        .appearance {
+          grid-template-columns: 1fr;
+        }
+      }
+    `,
   ];
   protected override willUpdate(changed: PropertyValues) {
     if (changed.has('kind')) {
@@ -177,7 +213,8 @@ export class KindForm extends LitElement {
     return html`<form novalidate @submit=${this.submit} aria-busy=${this.busy}>
       <fieldset ?disabled=${this.busy}>
         <label class="field"
-          ><span class="field-title" id="name-label">Name</span
+          ><span class="field-title" id="name-label"
+            >Name <span class="required" aria-hidden="true"></span></span
           ><input
             id="name"
             aria-labelledby="name-label"
@@ -193,8 +230,8 @@ export class KindForm extends LitElement {
             aria-describedby="name-error"
           /><span id="name-error" class="error">${nameError ?? ''}</span></label
         >
-        <fieldset>
-          <legend>Icon</legend>
+        <div class="appearance"><fieldset>
+          <legend>Icon <span class="required" aria-hidden="true"></span></legend>
           <label class="field"
             ><span class="help">Search icons</span
             ><input
@@ -223,7 +260,7 @@ export class KindForm extends LitElement {
           ${options.length ? nothing : html`<p class="help">No matching icons. Try another search.</p>`}
         </fieldset>
         <div class="field">
-          <span class="field-title">Colour</span>
+          <span class="field-title">Colour <span class="required" aria-hidden="true"></span></span>
           <div class="palette" role="group" aria-label="Approved colours">
             ${palette.map(
               ([label, color]) =>
@@ -261,12 +298,13 @@ export class KindForm extends LitElement {
               style=${/^#[0-9a-f]{6}$/i.test(this.colorValue) ? `background:${this.colorValue}` : ''}
             ></span
             ><span class="help"
-              >Selected icon: ${iconLabels[this.iconValue]}</span
+              >${this.nameValue.trim() || 'Activity kind'} · ${iconLabels[this.iconValue]}</span
             >
           </div>
         </div>
         <label class="field"
-          ><span class="field-title">Sort order</span
+          ><span class="field-title"
+            >Sort order <span class="required" aria-hidden="true"></span></span
           ><input
             data-field="sortOrder"
             type="number"
@@ -296,7 +334,7 @@ export class KindForm extends LitElement {
         >
           Cancel</button
         ><button class="primary" type="submit" ?disabled=${this.busy}>
-          ${this.busy ? 'Saving…' : this.kind ? 'Save changes' : 'Add activity kind'}
+          ${this.busy ? 'Saving…' : this.kind ? 'Save changes' : 'Create activity kind'}
         </button>
       </div>
     </form>`;

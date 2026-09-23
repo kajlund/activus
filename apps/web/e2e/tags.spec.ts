@@ -51,8 +51,9 @@ test('open Tags through Settings, create a colour tag by keyboard and edit it', 
   await expect(
     page.getByRole('button', { name: 'New tag', exact: true }),
   ).toBeFocused();
-  await page.getByLabel('Actions for Commute', { exact: true }).click();
-  await page.getByRole('button', { name: 'Edit tag', exact: true }).click();
+  await page
+    .getByRole('button', { name: 'Edit tag Commute', exact: true })
+    .click();
   await dialog.getByLabel('Name', { exact: true }).fill('With dog');
   await dialog.getByRole('radio', { name: 'No colour', exact: true }).check();
   await dialog
@@ -78,7 +79,6 @@ test('archive, include archived tags, refresh and restore to the active list', a
   const { tags } = await fixture(page);
   await tags.createTag({ name: 'Holiday', color: '#8069A5' });
   await page.goto('/tags');
-  await page.getByLabel('Actions for Holiday', { exact: true }).click();
   await page.getByRole('button', { name: 'Archive tag', exact: true }).click();
   const dialog = page.getByRole('dialog');
   await expect(dialog).toContainText('Historical activities keep this tag');
@@ -107,7 +107,6 @@ test('archive, include archived tags, refresh and restore to the active list', a
   });
   await page.reload();
   await expect(page.getByText('Holiday', { exact: true })).toBeVisible();
-  await page.getByLabel('Actions for Holiday', { exact: true }).click();
   await page.getByRole('button', { name: 'Restore tag', exact: true }).click();
   await dialog
     .getByRole('button', { name: 'Restore tag', exact: true })

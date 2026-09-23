@@ -8,9 +8,11 @@ import {
   clientMessage,
 } from '../../services/configuration-api.js';
 import { managementStyles } from './styles.js';
+import { configurationFormStyles } from './configuration-styles.js';
 export class VariantForm extends LitElement {
   static override properties = {
     variant: { attribute: false },
+    owner: { type: String },
     parentArchived: { type: Boolean },
     busy: { type: Boolean },
     error: { attribute: false },
@@ -19,6 +21,7 @@ export class VariantForm extends LitElement {
     defaultValue: { state: true },
     errors: { state: true },
   };
+  owner = '';
   variant: ActivityVariant | undefined;
   parentArchived = false;
   busy = false;
@@ -54,6 +57,7 @@ export class VariantForm extends LitElement {
         padding-top: var(--space-4);
       }
     `,
+    configurationFormStyles,
   ];
   protected override willUpdate(changed: PropertyValues) {
     if (changed.has('variant')) {
@@ -112,9 +116,11 @@ export class VariantForm extends LitElement {
         ? clientMessage(this.error)
         : undefined);
     return html`<form novalidate @submit=${this.submit} aria-busy=${this.busy}>
+      <p class="help">Variant of ${this.owner}</p>
       <fieldset ?disabled=${this.busy}>
         <label class="field"
-          ><span class="field-title" id="name-label">Name</span
+          ><span class="field-title" id="name-label"
+            >Name <span class="required" aria-hidden="true"></span></span
           ><input
             id="name"
             aria-labelledby="name-label"
@@ -148,7 +154,8 @@ export class VariantForm extends LitElement {
           </p>
         </div>
         <label class="field"
-          ><span class="field-title">Sort order</span
+          ><span class="field-title"
+            >Sort order <span class="required" aria-hidden="true"></span></span
           ><input
             data-field="sortOrder"
             type="number"

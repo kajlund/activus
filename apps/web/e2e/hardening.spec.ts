@@ -79,7 +79,7 @@ test('core journey joins configuration, entry, filters, editing and archived his
   const dialog = page.getByRole('dialog');
   await dialog.getByLabel('Name', { exact: true }).fill('Journal walking');
   await dialog
-    .getByRole('button', { name: 'Add activity kind', exact: true })
+    .getByRole('button', { name: 'Create activity kind', exact: true })
     .click();
   await expect(dialog).not.toBeVisible();
   await page.getByRole('link', { name: /Journal walking/ }).click();

@@ -25,18 +25,20 @@ test('create and edit a kind, manage variants and refresh a detail deep link', a
   await expect(dialog.getByLabel('Name', { exact: true })).toBeFocused();
   await dialog.getByLabel('Name', { exact: true }).fill('Walking');
   await dialog
-    .getByRole('button', { name: 'Add activity kind', exact: true })
+    .getByRole('button', { name: 'Create activity kind', exact: true })
     .click();
   await expect(dialog).not.toBeVisible();
-  await page.getByLabel('Actions for Walking', { exact: true }).click();
-  await page.getByRole('button', { name: 'Edit', exact: true }).click();
+  await page.getByRole('link', { name: /Walking/ }).click();
+  await page
+    .getByRole('button', { name: 'Edit activity kind', exact: true })
+    .click();
   await dialog.getByLabel('Name', { exact: true }).fill('Cycling');
   await dialog.getByLabel('Search icons', { exact: true }).fill('Bike');
   await dialog.getByLabel('Bike', { exact: true }).check();
   await dialog.getByRole('button', { name: 'Blue #527FA5' }).click();
   await dialog.getByRole('button', { name: 'Save changes' }).click();
   await expect(dialog).not.toBeVisible();
-  await page.getByRole('link', { name: /Cycling/ }).click();
+
   await expect(page).toHaveURL(/\/activity-kinds\/[0-9a-f-]+$/);
   await expect(
     page.getByRole('heading', { name: 'Cycling', exact: true }),
@@ -51,19 +53,25 @@ test('create and edit a kind, manage variants and refresh a detail deep link', a
       .click();
     await expect(dialog).not.toBeVisible();
   }
-  await page.getByLabel('Actions for Treadmill', { exact: true }).click();
-  await page.getByRole('button', { name: 'Edit', exact: true }).click();
+  await page
+    .getByRole('button', { name: 'Edit variant Treadmill', exact: true })
+    .click();
   await dialog.getByLabel('Use as default variant').check();
   await dialog.getByRole('button', { name: 'Save changes' }).click();
   await expect(page.getByText('Default', { exact: true })).toBeVisible();
-  await page.getByLabel('Actions for Treadmill', { exact: true }).click();
-  await page.getByRole('button', { name: 'Archive', exact: true }).click();
+  await page
+    .getByRole('list', { name: 'Variants', exact: true })
+    .getByRole('listitem')
+    .filter({ hasText: 'Treadmill' })
+    .getByRole('button', { name: 'Archive variant', exact: true })
+    .click();
   await expect(dialog).toContainText('default selection is cleared');
   await dialog.getByRole('button', { name: 'Archive', exact: true }).click();
   await expect(page.getByText('Default', { exact: true })).not.toBeVisible();
   await page.getByLabel('Show archived variants').check();
-  await page.getByLabel('Actions for Treadmill', { exact: true }).click();
-  await page.getByRole('button', { name: 'Restore', exact: true }).click();
+  await page
+    .getByRole('button', { name: 'Restore variant', exact: true })
+    .click();
   await dialog.getByRole('button', { name: 'Restore', exact: true }).click();
   await expect(dialog).not.toBeVisible();
   await page.reload();
@@ -174,7 +182,7 @@ test('empty, network error and conflict states preserve context', async ({
   const dialog = page.getByRole('dialog');
   await dialog.getByLabel('Name', { exact: true }).fill('Walking');
   await dialog
-    .getByRole('button', { name: 'Add activity kind', exact: true })
+    .getByRole('button', { name: 'Create activity kind', exact: true })
     .click();
   await expect(dialog.getByRole('alert')).toContainText('already used');
   await expect(dialog.getByLabel('Name', { exact: true })).toHaveValue(

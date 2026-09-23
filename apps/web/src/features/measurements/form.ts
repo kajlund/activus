@@ -9,6 +9,7 @@ import {
   clientMessage,
 } from '../../services/configuration-api.js';
 import { managementStyles } from '../activity-kinds/styles.js';
+import { configurationFormStyles } from '../activity-kinds/configuration-styles.js';
 import {
   defaults,
   typeLabels,
@@ -115,6 +116,7 @@ export class MeasurementForm extends LitElement {
         }
       }
     `,
+    configurationFormStyles,
   ];
   protected override willUpdate(changed: PropertyValues) {
     if (!this.initial || changed.has('definition')) {
@@ -181,9 +183,13 @@ export class MeasurementForm extends LitElement {
     if (
       this.errors.settings ||
       Object.keys(this.errors).some((key) =>
-        ['precision', 'minimumValue', 'maximumValue', 'aggregation'].includes(
-          key,
-        ),
+        [
+          'precision',
+          'minimumValue',
+          'maximumValue',
+          'aggregation',
+          'sortOrder',
+        ].includes(key),
       )
     ) {
       const details = this.renderRoot.querySelector('details');
@@ -301,6 +307,42 @@ export class MeasurementForm extends LitElement {
       />${this.errorFor(key)}
     </div>`;
   }
+  private choices(
+    key: 'aggregation' | 'personalBestDirection',
+    label: string,
+    options: Record<string, string>,
+  ) {
+    return html`<fieldset
+      class="field"
+      id=${key}
+      tabindex="-1"
+      aria-describedby=${`${key}-error`}
+    >
+      <legend>${label}</legend>
+      <div class="choices">
+        ${Object.entries(options)
+          .filter(
+            ([value]) =>
+              key !== 'aggregation' ||
+              this.fields.valueType !== 'rating' ||
+              value !== 'total',
+          )
+          .map(
+            ([value, text]) =>
+              html`<label class="choice"
+                ><input
+                  type="radio"
+                  name=${key}
+                  value=${value}
+                  .checked=${this.fields[key] === value}
+                  @change=${() => this.change(key, value as MeasurementFields[typeof key])}
+                />${text}</label
+              >`,
+          )}
+      </div>
+      ${this.errorFor(key)}
+    </fieldset>`;
+  }
   override render() {
     const f = this.fields;
     const numeric = !['boolean', 'text'].includes(f.valueType);
@@ -337,15 +379,18 @@ export class MeasurementForm extends LitElement {
       <fieldset ?disabled=${this.busy}>
         <legend>Measurement details</legend>
         <div class="field">
-          <label for="name">Name</label
+          <label for="name"
+            >Name <span class="required" aria-hidden="true"></span></label
           ><input
             id="name"
+            required
             maxlength="120"
             .value=${f.name}
             aria-invalid=${Boolean(this.errors.name)}
-            aria-describedby="name-error"
+            aria-describedby="name-error duration-help"
             @input=${(e: Event) => this.change('name', (e.target as HTMLInputElement).value)}
           />${this.errorFor('name')}
+          ${f.valueType === 'duration' ? html`<p class="help" id="duration-help">Overall duration is already part of every activity. Use a specific name such as Moving time or Rest time for an additional duration. Existing Duration definitions retain their history.</p>` : nothing}
         </div>
         <div class="field">
           <label for="valueType">Value type</label
@@ -413,42 +458,30 @@ export class MeasurementForm extends LitElement {
         >
       </fieldset>
       <details>
-        <summary>Advanced settings</summary>
+        <summary>Entry and summary settings</summary>
         <fieldset ?disabled=${this.busy}>
-          <legend>Display and reporting</legend>
+          <legend>Entry rules</legend>
           ${this.errors.settings ? html`<p id="settings" tabindex="-1" class="error" role="alert">${this.errors.settings}</p>` : nothing}
           ${
             numeric
               ? html` ${f.valueType === 'decimal' ? html`<div class="field"><label for="precision">Precision (0–6 decimal places)</label><input id="precision" type="number" min="0" max="6" step="1" ?disabled=${this.historyLocked} .value=${String(f.precision ?? '')} aria-describedby="precision-error history-help" aria-invalid=${Boolean(this.errors.precision)} @input=${(e: Event) => this.change('precision', (e.target as HTMLInputElement).valueAsNumber)} />${this.errorFor('precision')}</div>` : nothing}
                   ${
                     f.valueType === 'rating'
-                      ? html`<div class="grid">
-                            <div class="field">
-                              <label for="minimumValue">Minimum</label
-                              ><input
-                                id="minimumValue"
-                                value="1"
-                                readonly
-                                aria-describedby="bounds-help"
-                              />
-                            </div>
-                            <div class="field">
-                              <label for="maximumValue">Maximum</label
-                              ><select
-                                id="maximumValue"
-                                ?disabled=${this.historyLocked}
-                                .value=${String(f.maximumValue)}
-                                @change=${(e: Event) => this.change('maximumValue', Number((e.target as HTMLSelectElement).value))}
-                              >
-                                <option value="5">5</option>
-                                <option value="10">10</option>
-                              </select>
-                            </div>
+                      ? html`<fieldset
+                          id="maximumValue"
+                          tabindex="-1"
+                          ?disabled=${this.historyLocked}
+                          aria-describedby="maximumValue-error bounds-help"
+                        >
+                          <legend>Rating range</legend>
+                          <div class="choices">
+                            ${[5, 10].map((max) => html`<label class="choice"><input type="radio" name="ratingRange" .checked=${f.maximumValue === max} @change=${() => this.change('maximumValue', max)} />1 to ${max}</label>`)}
                           </div>
+                          ${this.errorFor('maximumValue')}
                           <p class="help" id="bounds-help">
-                            Rating values will be selected from 1 to this
-                            maximum.
-                          </p>`
+                            Choose the highest available rating.
+                          </p>
+                        </fieldset>`
                       : html`<div class="grid">
                             ${this.bound('minimumValue', 'Minimum')}${this.bound('maximumValue', 'Maximum')}
                           </div>
@@ -457,43 +490,20 @@ export class MeasurementForm extends LitElement {
                             limits.${f.valueType === 'duration' ? ' Use hours:minutes:seconds, for example 0:05:00.' : ' Values use the selected display unit.'}
                           </p>`
                   }
-                  <div class="field">
-                    <label for="aggregation">Aggregation</label
-                    ><select
-                      id="aggregation"
-                      .value=${f.aggregation}
-                      aria-describedby="aggregation-error aggregation-help"
-                      @change=${(e: Event) => this.change('aggregation', (e.target as HTMLSelectElement).value as MeasurementFields['aggregation'])}
-                    >
-                      ${Object.entries(aggregationLabels)
-                        .filter(
-                          ([v]) => f.valueType !== 'rating' || v !== 'total',
-                        )
-                        .map(
-                          ([v, label]) =>
-                            html`<option value=${v}>${label}</option>`,
-                        )}
-                    </select>
-                    <p class="help" id="aggregation-help">
-                      How recorded values may be summarized across activities.
+                  <div class="form-section stack">
+                    <h3>Summary behaviour</h3>
+                    ${this.choices('aggregation', 'Aggregation', aggregationLabels)}
+                    ${this.choices('personalBestDirection', 'Personal bests', bestLabels)}
+                    <p class="help">
+                      These rules control how values can be summarised and
+                      compared.
                     </p>
-                    ${this.errorFor('aggregation')}
-                  </div>
-                  <div class="field">
-                    <label for="personalBestDirection">Personal bests</label
-                    ><select
-                      id="personalBestDirection"
-                      .value=${f.personalBestDirection}
-                      @change=${(e: Event) => this.change('personalBestDirection', (e.target as HTMLSelectElement).value as MeasurementFields['personalBestDirection'])}
-                    >
-                      ${Object.entries(bestLabels).map(([v, label]) => html`<option value=${v}>${label}</option>`)}
-                    </select>
                   </div>`
               : html`<p class="help">
                   This value type has no numeric settings.
                 </p>`
           }
-          <div class="field">
+          <div class="field form-section">
             <label for="sortOrder">Display order</label
             ><input
               id="sortOrder"
@@ -506,6 +516,9 @@ export class MeasurementForm extends LitElement {
               aria-describedby="sortOrder-error"
               @input=${(e: Event) => this.change('sortOrder', (e.target as HTMLInputElement).valueAsNumber)}
             />${this.errorFor('sortOrder')}
+            <p class="help">
+              Lower numbers appear first. Equal numbers are allowed.
+            </p>
           </div>
         </fieldset>
       </details>

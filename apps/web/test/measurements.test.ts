@@ -281,7 +281,7 @@ it('shows parent empty, server order, archived and errors without including vari
   await el.load();
   await settle(el);
   expect(
-    [...el.shadowRoot!.querySelectorAll('.copy strong')].map(
+    [...el.shadowRoot!.querySelectorAll('.copy .name-button')].map(
       (e) => e.textContent,
     ),
   ).toEqual(['Zulu', 'Alpha']);
@@ -393,7 +393,9 @@ it('archives, restores, preserves rejected forms and prevents duplicate submissi
   ).click();
   await settle(el);
   expect(api.measurements[0]?.isArchived).toBe(false);
-  button(el.shadowRoot!, 'Edit measurement').click();
+  el.shadowRoot!.querySelector<HTMLButtonElement>(
+    '[aria-label^="Edit measurement " ]',
+  )!.click();
   await settle(el);
   const f = el.shadowRoot!.querySelector<MeasurementForm>('measurement-form')!;
   await settle(f);

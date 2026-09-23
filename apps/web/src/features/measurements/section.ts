@@ -16,9 +16,10 @@ import {
   type MeasurementApi,
 } from '../../services/configuration-api.js';
 import { managementStyles } from '../activity-kinds/styles.js';
+import { configurationStyles } from '../activity-kinds/configuration-styles.js';
 import { trapDialogFocus } from '../../components/dialog-focus.js';
 import { navigate } from '../../routes/navigation.js';
-import { typeLabels, aggregationLabels, bestLabels } from './fields.js';
+import { typeLabels, aggregationLabels } from './fields.js';
 import { MeasurementForm } from './form.js';
 
 type Editor =
@@ -141,40 +142,6 @@ export class MeasurementSection extends LitElement {
       .status {
         min-height: 1.5em;
       }
-      details {
-        position: relative;
-      }
-      summary {
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        min-width: 44px;
-        min-height: 44px;
-        cursor: pointer;
-        list-style: none;
-        border-radius: var(--radius-md);
-      }
-      summary::-webkit-details-marker {
-        display: none;
-      }
-      .menu {
-        position: absolute;
-        right: 0;
-        top: 44px;
-        z-index: 4;
-        width: 190px;
-        display: grid;
-        padding: var(--space-2);
-        background: var(--color-surface);
-        border: 1px solid var(--color-border);
-        border-radius: var(--radius-md);
-        box-shadow: var(--shadow-md);
-      }
-      .menu button {
-        text-align: left;
-        justify-content: flex-start;
-        border: 0;
-      }
       dialog {
         width: min(680px, calc(100% - 32px));
         max-height: calc(100dvh - 48px);
@@ -219,6 +186,72 @@ export class MeasurementSection extends LitElement {
           border: 0;
           border-radius: 0;
           padding: var(--space-5);
+        }
+      }
+    `,
+    configurationStyles,
+    css`
+      .row {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) auto;
+        gap: 4px 16px;
+        padding: 8px 0;
+      }
+      .copy {
+        display: contents;
+      }
+      .measurement-title {
+        grid-column: 1;
+        grid-row: 1;
+      }
+      .metadata,
+      .copy > p {
+        grid-column: 1 / -1;
+      }
+      .measurement-title {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        flex-wrap: wrap;
+      }
+      .metadata {
+        display: grid;
+        grid-template-columns: 1.2fr 0.8fr 1fr 1fr 1.6fr;
+        gap: 12px;
+        margin: 0 0 4px;
+      }
+      .metadata div {
+        min-width: 0;
+      }
+      dt {
+        font-size: 0.75rem;
+        margin-bottom: 4px;
+      }
+      dd {
+        margin: 0;
+        color: var(--color-text);
+        overflow-wrap: anywhere;
+      }
+      .row-actions {
+        grid-column: 2;
+        grid-row: 1;
+        justify-content: flex-end;
+      }
+      .row-actions button {
+        font-size: var(--font-size-small);
+      }
+      .copy {
+        min-width: 0;
+      }
+      @media (max-width: 600px) {
+        .row {
+          display: block;
+        }
+        .metadata {
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+        }
+        .row-actions {
+          justify-content: flex-start;
         }
       }
     `,
@@ -468,42 +501,61 @@ export class MeasurementSection extends LitElement {
               const parent = this.url(true);
               return html`<li class=${`row ${m.isArchived ? 'archived' : ''}`}>
                 <div class="copy">
-                  <strong>${m.name}</strong>
-                  <div class="metadata">
-                    <span
-                      >${typeLabels[m.valueType]}${unit ? ` · ${unit.symbol}` : m.displayUnit === null ? ' · No unit' : ''}</span
-                    ><span>${m.isRequired ? 'Required' : 'Optional'}</span
-                    >${primary ? html`<span class="badge default">Primary</span>` : nothing}${inherited ? html`<span class="badge">Inherited</span>` : nothing}${m.isArchived ? html`<span class="badge">Archived</span>` : nothing}${m.aggregation !== 'none' ? html`<span>${aggregationLabels[m.aggregation]}</span>` : nothing}${m.personalBestDirection !== 'none' ? html`<span>${bestLabels[m.personalBestDirection]}</span>` : nothing}
+                  <div class="measurement-title">
+                    ${inherited ? html`<strong>${m.name}</strong>` : html`<button class="name-button" aria-label=${`Edit measurement ${m.name}`} ?disabled=${Boolean(this.busy) || !this.units} @click=${(e: Event) => this.open({ action: 'edit', value: m }, e)}>${m.name}</button>`}
+                    ${primary ? html`<span class="badge default">Primary</span>` : nothing}
+                    ${m.isArchived ? html`<span class="help">Archived</span>` : nothing}
                   </div>
+                  <dl class="metadata">
+                    <div>
+                      <dt>Value</dt>
+                      <dd>${typeLabels[m.valueType]}</dd>
+                    </div>
+                    <div>
+                      <dt>Unit</dt>
+                      <dd>
+                        ${unit?.symbol ?? (m.displayUnit === null ? 'None' : 'Unavailable')}
+                      </dd>
+                    </div>
+                    <div>
+                      <dt>Entry</dt>
+                      <dd>${m.isRequired ? 'Required' : 'Optional'}</dd>
+                    </div>
+                    <div>
+                      <dt>Summary</dt>
+                      <dd>
+                        ${m.aggregation === 'none' ? 'None' : aggregationLabels[m.aggregation]}
+                      </dd>
+                    </div>
+                    <div>
+                      <dt>Comparison</dt>
+                      <dd>
+                        ${m.personalBestDirection === 'none' ? 'Not compared' : m.personalBestDirection === 'highest' ? 'Higher is better' : 'Lower is better'}
+                      </dd>
+                    </div>
+                  </dl>
+                  ${m.valueType === 'duration' && m.name.trim().toLowerCase() === 'duration' ? html`<p class="help">Overall duration is already entered with the activity. This definition and its recorded values are retained.</p>` : nothing}
                 </div>
-                ${
-                  inherited
-                    ? html`<a
-                        class="button quiet"
-                        href=${parent.pathname + parent.search}
-                        >Edit at parent</a
-                      >`
-                    : html`<details>
-                        <summary
-                          aria-label=${`Measurement actions for ${m.name}`}
-                        >
-                          •••
-                        </summary>
-                        <div class="menu">
+                <div class="row-actions">
+                  ${
+                    inherited
+                      ? html`<a
+                          class="button quiet"
+                          href=${parent.pathname + parent.search}
+                          >Edit at parent</a
+                        >`
+                      : html`
+                          ${eligible && !primary ? html`<button ?disabled=${Boolean(this.busy)} @click=${() => this.primary(m.id)}>Set as primary</button>` : nothing}
+                          ${primary ? html`<button ?disabled=${Boolean(this.busy)} @click=${() => this.primary(null)}>Clear primary</button>` : nothing}
                           <button
-                            ?disabled=${this.busy === m.id || !this.units}
-                            @click=${(e: Event) => this.open({ action: 'edit', value: m }, e)}
-                          >
-                            Edit measurement</button
-                          >${eligible && !primary ? html`<button ?disabled=${Boolean(this.busy)} @click=${() => this.primary(m.id)}>Set as primary</button>` : nothing}${primary ? html`<button ?disabled=${Boolean(this.busy)} @click=${() => this.primary(null)}>Clear primary</button>` : nothing}<button
-                            ?disabled=${this.busy === m.id || (m.isArchived && (this.kind.isArchived || this.variant?.isArchived === true))}
+                            ?disabled=${Boolean(this.busy) || (m.isArchived && (this.kind.isArchived || this.variant?.isArchived === true))}
                             @click=${(e: Event) => this.open({ action: m.isArchived ? 'restore' : 'archive', value: m }, e)}
                           >
                             ${m.isArchived ? 'Restore measurement' : 'Archive measurement'}
                           </button>
-                        </div>
-                      </details>`
-                }
+                        `
+                  }
+                </div>
               </li>`;
             },
           )}
@@ -531,11 +583,10 @@ export class MeasurementSection extends LitElement {
         <div>
           <h2 id="measurements-title" tabindex="-1">Measurements</h2>
           <p class="muted">
-            ${this.variant ? `Additional values for ${this.variant.name}. Parent measurements apply to every variant.` : 'Define the values to record. Overall duration and notes are already common activity fields.'}
+            ${this.variant ? `Additional values for ${this.variant.name}. Parent measurements apply to every variant.` : 'Overall duration and notes are included with every activity.'}
           </p>
         </div>
         <button
-          class="primary"
           ?disabled=${!this.units || this.kind.isArchived || this.variant?.isArchived || this.busy === 'create'}
           @click=${(e: Event) => this.open({ action: 'edit' }, e)}
         >

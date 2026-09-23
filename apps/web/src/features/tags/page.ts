@@ -15,6 +15,7 @@ import {
 import { navigate } from '../../routes/navigation.js';
 import { trapDialogFocus } from '../../components/dialog-focus.js';
 import { managementStyles } from '../activity-kinds/styles.js';
+import { configurationStyles } from '../activity-kinds/configuration-styles.js';
 import { TagForm } from './form.js';
 
 type Editor =
@@ -157,43 +158,6 @@ export class TagsPage extends LitElement {
       .archived strong {
         color: var(--color-text-muted);
       }
-      details {
-        position: relative;
-        flex-shrink: 0;
-      }
-      summary {
-        width: 44px;
-        min-height: 44px;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        cursor: pointer;
-        border-radius: var(--radius-md);
-        list-style: none;
-      }
-      summary::-webkit-details-marker {
-        display: none;
-      }
-      details[open] summary {
-        background: var(--color-primary-soft);
-      }
-      .menu {
-        position: absolute;
-        right: 0;
-        top: 44px;
-        z-index: 2;
-        display: grid;
-        width: 170px;
-        padding: var(--space-2);
-        background: var(--color-surface);
-        border: 1px solid var(--color-border);
-        border-radius: var(--radius-md);
-        box-shadow: var(--shadow-md);
-      }
-      .menu button {
-        border: 0;
-        justify-content: flex-start;
-      }
       .empty {
         border-top: 1px solid var(--color-border);
         padding: var(--space-7) var(--space-5);
@@ -276,6 +240,7 @@ export class TagsPage extends LitElement {
         }
       }
     `,
+    configurationStyles,
   ];
   protected override willUpdate(changed: PropertyValues) {
     if (changed.has('route') || changed.has('api')) {
@@ -634,25 +599,21 @@ export class TagsPage extends LitElement {
                     html`<li class=${`row ${t.isArchived ? 'archived' : ''}`}>
                       ${t.color ? html`<span class="swatch" style=${`background:${t.color}`} role="img" aria-label=${`Colour ${t.color}`}></span>` : nothing}
                       <div class="name">
-                        <strong>${t.name}</strong
+                        <button
+                          class="name-button"
+                          aria-label=${`Edit tag ${t.name}`}
+                          @click=${(e: Event) => this.open({ action: 'edit', tag: t }, e)}
+                        >
+                          ${t.name}</button
                         >${t.isArchived ? html`<span class="badge">Archived</span>` : nothing}
                       </div>
-                      <details>
-                        <summary aria-label=${`Actions for ${t.name}`}>
-                          •••
-                        </summary>
-                        <div class="menu">
-                          <button
-                            @click=${(e: Event) => this.open({ action: 'edit', tag: t }, e)}
-                          >
-                            Edit tag</button
-                          ><button
-                            @click=${(e: Event) => this.open({ action: t.isArchived ? 'restore' : 'archive', tag: t }, e)}
-                          >
-                            ${t.isArchived ? 'Restore tag' : 'Archive tag'}
-                          </button>
-                        </div>
-                      </details>
+                      <div class="row-actions">
+                        <button
+                          @click=${(e: Event) => this.open({ action: t.isArchived ? 'restore' : 'archive', tag: t }, e)}
+                        >
+                          ${t.isArchived ? 'Restore tag' : 'Archive tag'}
+                        </button>
+                      </div>
                     </li>`,
                 )}
               </ul>`

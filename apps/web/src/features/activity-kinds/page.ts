@@ -18,6 +18,7 @@ import {
 } from '../../services/configuration-api.js';
 import { navigate } from '../../routes/navigation.js';
 import { managementStyles } from './styles.js';
+import { configurationStyles } from './configuration-styles.js';
 import { activityIcon } from './icons.js';
 import { KindForm } from './kind-form.js';
 import { VariantForm } from './variant-form.js';
@@ -36,6 +37,7 @@ export class ActivityKindsPage extends LitElement {
     api: { attribute: false },
     measurementApi: { attribute: false },
     kinds: { state: true },
+    hasArchived: { state: true },
     kind: { state: true },
     variants: { state: true },
     loading: { state: true },
@@ -50,6 +52,7 @@ export class ActivityKindsPage extends LitElement {
   route = window.location.pathname + window.location.search;
   api: ConfigurationApi = configurationApi;
   measurementApi: MeasurementApi = configurationApi;
+  private hasArchived = false;
   private kinds: ActivityKind[] = [];
   private kind: ActivityKind | undefined;
   private variants: ActivityVariant[] = [];
@@ -221,44 +224,6 @@ export class ActivityKindsPage extends LitElement {
         font-size: 24px;
         color: var(--color-text-muted);
       }
-      .more {
-        position: relative;
-        flex-shrink: 0;
-      }
-      .more summary {
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        width: 44px;
-        height: 44px;
-        cursor: pointer;
-        list-style: none;
-        border-radius: var(--radius-md);
-      }
-      .more summary::-webkit-details-marker {
-        display: none;
-      }
-      .more[open] summary {
-        background: var(--color-primary-soft);
-      }
-      .menu {
-        position: absolute;
-        right: 0;
-        top: 46px;
-        width: 180px;
-        z-index: 3;
-        display: grid;
-        gap: var(--space-1);
-        padding: var(--space-2);
-        background: var(--color-surface);
-        border: 1px solid var(--color-border);
-        border-radius: var(--radius-md);
-        box-shadow: var(--shadow-md);
-      }
-      .menu button {
-        justify-content: flex-start;
-        border: 0;
-      }
       .empty {
         padding: var(--space-7) var(--space-5);
         text-align: center;
@@ -332,19 +297,6 @@ export class ActivityKindsPage extends LitElement {
         .heading-copy {
           flex-basis: 100%;
         }
-        section[aria-labelledby='variants-title'] .row {
-          display: grid;
-          grid-template-columns: minmax(0, 1fr) 44px;
-        }
-        section[aria-labelledby='variants-title'] .row > a {
-          grid-column: 1 / -1;
-          grid-row: 2;
-          justify-self: start;
-        }
-        section[aria-labelledby='variants-title'] .more {
-          grid-column: 2;
-          grid-row: 1;
-        }
         .heading {
           gap: var(--space-4);
         }
@@ -373,6 +325,7 @@ export class ActivityKindsPage extends LitElement {
         }
       }
     `,
+    configurationStyles,
   ];
   protected override willUpdate(changed: PropertyValues) {
     if (changed.has('route') || changed.has('api')) {
@@ -404,6 +357,7 @@ export class ActivityKindsPage extends LitElement {
     }
     this.loadedPath = path;
     this.loading = true;
+    this.hasArchived = false;
     this.error = undefined;
     this.variantError = undefined;
     try {
@@ -412,7 +366,13 @@ export class ActivityKindsPage extends LitElement {
           this.archived,
           controller.signal,
         );
-        if (generation === this.generation) this.kinds = result.items;
+        if (generation !== this.generation) return;
+        this.kinds = result.items;
+        if (!this.archived && !result.items.length) {
+          const all = await this.api.listKinds(true, controller.signal);
+          if (generation !== this.generation) return;
+          this.hasArchived = all.items.some((kind) => kind.isArchived);
+        }
       } else {
         const match = /^\/activity-kinds\/([^/]+)$/.exec(path);
         const id = match?.[1];
@@ -549,38 +509,24 @@ export class ActivityKindsPage extends LitElement {
       <div><button @click=${() => void this.load()}>Retry</button></div>
     </div>`;
   }
-  private menu(
+  private lifecycle(
     value: ActivityKind | ActivityVariant,
     target: 'kind' | 'variant',
   ) {
-    return html`<details class="more">
-      <summary
-        aria-label=${`Actions for ${value.name}`}
-        title=${`Actions for ${value.name}`}
-      >
-        •••
-      </summary>
-      <div class="menu">
-        <button
-          @click=${(e: Event) => this.openEditor(target === 'kind' ? { type: 'kind', value: value as ActivityKind } : { type: 'variant', value: value as ActivityVariant }, e)}
-        >
-          Edit</button
-        ><button
-          ?disabled=${target === 'variant' && value.isArchived && this.kind?.isArchived}
-          @click=${(e: Event) => this.openEditor({ type: 'confirm', target, action: value.isArchived ? 'restore' : 'archive', value }, e)}
-        >
-          ${value.isArchived ? 'Restore' : 'Archive'}
-        </button>
-      </div>
-    </details>`;
+    return html`<button
+      ?disabled=${this.busy || (target === 'variant' && value.isArchived && this.kind?.isArchived)}
+      @click=${(e: Event) => this.openEditor({ type: 'confirm', target, action: value.isArchived ? 'restore' : 'archive', value }, e)}
+    >
+      ${value.isArchived ? 'Restore' : 'Archive'}
+      ${target === 'kind' ? 'activity kind' : 'variant'}
+    </button>`;
   }
   private renderList() {
     return html` <header class="heading">
         <div class="heading-copy">
           <h1 tabindex="-1">Activity kinds</h1>
           <p class="muted">
-            Kinds define the activities you record and their available variants
-            and measurements.
+            Choose what you record and the values that matter.
           </p>
         </div>
         <button
@@ -610,7 +556,9 @@ export class ActivityKindsPage extends LitElement {
                 (k) =>
                   html`<li class=${`row ${k.isArchived ? 'archived' : ''}`}>
                     <a class="row-link" href=${this.kindUrl(k.id)}
-                      ><span class="kind-symbol"
+                      ><span
+                        class="kind-symbol"
+                        style=${`--kind-color:${k.color}`}
                         >${activityIcon(k.iconName)}</span
                       ><span class="row-copy"
                         ><span class="row-name">${k.name}</span
@@ -622,26 +570,21 @@ export class ActivityKindsPage extends LitElement {
                         aria-label=${`Colour ${k.color}`}
                       ></span
                       ><span class="chevron" aria-hidden="true">›</span></a
-                    >${this.menu(k, 'kind')}
+                    >
                   </li>`,
               )}
             </ul>`
           : !this.loading && !this.error
             ? html`<div class="empty">
-                <h2>No activity kinds yet</h2>
+                <h2>
+                  ${this.archived ? 'No archived activity kinds' : this.hasArchived ? 'No active activity kinds' : 'No activity kinds yet'}
+                </h2>
                 <p class="muted">
-                  Add your first kind to define the activities you want to
-                  record.
+                  ${this.hasArchived ? 'Show archived kinds to restore an existing kind.' : 'Add an activity kind to start configuring your journal.'}
                 </p>
-                <button
-                  class="primary"
-                  @click=${(e: Event) => this.openEditor({ type: 'kind' }, e)}
-                >
-                  Add activity kind
-                </button>
               </div>`
             : nothing
-      }`;
+      }${this.archived && this.kinds.length && !this.loading && !this.error && !this.kinds.some((k) => k.isArchived) ? html`<p class="help">No archived activity kinds.</p>` : nothing}`;
   }
   private renderDetail() {
     const kind = this.kind;
@@ -663,7 +606,9 @@ export class ActivityKindsPage extends LitElement {
           ? html`<header class="heading">
                 <div class="heading-copy">
                   <div class="detail-title">
-                    <span class="kind-symbol"
+                    <span
+                      class="kind-symbol"
+                      style=${`--kind-color:${kind.color}`}
                       >${activityIcon(kind.iconName)}</span
                     >
                     <h1 tabindex="-1">${kind.name}</h1>
@@ -680,8 +625,8 @@ export class ActivityKindsPage extends LitElement {
                   <button
                     @click=${(e: Event) => this.openEditor({ type: 'kind', value: kind }, e)}
                   >
-                    Edit activity kind</button
-                  >${this.menu(kind, 'kind')}
+                    Edit activity kind
+                  </button>
                 </div>
               </header>
               ${kind.isArchived ? html`<p class="notice">This kind remains available in history. Restore it before adding or restoring variants or selecting a default.</p>` : nothing}
@@ -706,7 +651,6 @@ export class ActivityKindsPage extends LitElement {
                     </p>
                   </div>
                   <button
-                    class="primary"
                     ?disabled=${kind.isArchived}
                     @click=${(e: Event) => this.openEditor({ type: 'variant' }, e)}
                   >
@@ -725,7 +669,9 @@ export class ActivityKindsPage extends LitElement {
                 </div>
                 ${this.variantError ? this.renderError(this.variantError) : nothing}
                 ${
-                  this.variants.length
+                  this.variants.some(
+                    (v) => this.archivedVariants || !v.isArchived,
+                  )
                     ? html`<ul class="list" aria-label="Variants">
                         ${repeat(
                           this.variants.filter(
@@ -737,15 +683,22 @@ export class ActivityKindsPage extends LitElement {
                               class=${`row ${v.isArchived ? 'archived' : ''}`}
                             >
                               <div class="row-copy">
-                                <span class="row-name">${v.name}</span
+                                <button
+                                  class="name-button row-name"
+                                  aria-label=${`Edit variant ${v.name}`}
+                                  @click=${(e: Event) => this.openEditor({ type: 'variant', value: v }, e)}
+                                >
+                                  ${v.name}</button
                                 >${v.isDefault ? html`<span class="badge default">Default</span>` : nothing}${v.isArchived ? html`<span class="badge">Archived</span>` : nothing}
                               </div>
-                              <a
-                                class="button quiet"
-                                href=${this.variantMeasurementUrl(v.id)}
-                                aria-label=${`Measurements for ${v.name}`}
-                                >Measurements</a
-                              >${this.menu(v, 'variant')}
+                              <div class="row-actions">
+                                <a
+                                  class="button quiet"
+                                  href=${this.variantMeasurementUrl(v.id)}
+                                  aria-label=${`Measurements for ${v.name}`}
+                                  >Measurements</a
+                                >${this.lifecycle(v, 'variant')}
+                              </div>
                             </li>`,
                         )}
                       </ul>`
@@ -759,7 +712,8 @@ export class ActivityKindsPage extends LitElement {
                         </div>`
                       : nothing
                 }
-              </section>`
+              </section>
+              <div class="lifecycle">${this.lifecycle(kind, 'kind')}</div>`
           : nothing
       }`;
   }
@@ -820,6 +774,7 @@ export class ActivityKindsPage extends LitElement {
             ></kind-form>`
           : editor.type === 'variant'
             ? html`<variant-form
+                .owner=${this.kind?.name ?? ''}
                 .variant=${editor.value}
                 .parentArchived=${this.kind?.isArchived ?? false}
                 .busy=${this.busy}

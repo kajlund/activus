@@ -39,7 +39,7 @@ async function page(route = '/activity-kinds') {
 }
 function button(root: ShadowRoot | Element, text: string) {
   const result = [...root.querySelectorAll('button')].find(
-    (b) => b.textContent?.trim() === text,
+    (b) => b.textContent?.trim().replace(/\s+/g, ' ') === text,
   );
   if (!result) throw new Error(`Missing button: ${text}`);
   return result;
@@ -158,7 +158,7 @@ it('edits a variant and refreshes transactional default selection', async () => 
   });
   const view = await page(`/activity-kinds/${kind.id}`);
   const rows = view.shadowRoot!.querySelectorAll('li.row');
-  button(rows[1]!, 'Edit').click();
+  button(rows[1]!, 'Treadmill').click();
   await settle(view);
   const form = view.shadowRoot!.querySelector<VariantForm>('variant-form')!;
   await settle(form);
@@ -174,8 +174,8 @@ it('edits a variant and refreshes transactional default selection', async () => 
 });
 it('requires archive confirmation and supports restore from archived view', async () => {
   const kind = await api.createKind(kindInput);
-  const view = await page();
-  button(view.shadowRoot!, 'Archive').click();
+  const view = await page(`/activity-kinds/${kind.id}`);
+  button(view.shadowRoot!, 'Archive activity kind').click();
   await settle(view);
   expect(api.kinds[0]?.isArchived).toBe(false);
   expect(view.shadowRoot!.querySelector('dialog')?.textContent).toContain(
@@ -184,9 +184,9 @@ it('requires archive confirmation and supports restore from archived view', asyn
   button(view.shadowRoot!.querySelector('dialog')!, 'Archive').click();
   await settle(view);
   expect(api.kinds[0]?.isArchived).toBe(true);
-  view.route = '/activity-kinds?archived=true';
+  view.route = `/activity-kinds/${kind.id}?archived=true`;
   await settle(view);
-  button(view.shadowRoot!, 'Restore').click();
+  button(view.shadowRoot!, 'Restore activity kind').click();
   await settle(view);
   button(view.shadowRoot!.querySelector('dialog')!, 'Restore').click();
   await settle(view);
