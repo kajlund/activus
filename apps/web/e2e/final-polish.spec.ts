@@ -3,6 +3,58 @@ import AxeBuilder from '@axe-core/playwright';
 import { journalFixture } from '../test/support/journal.js';
 import { fixedDetail, periodHistory } from '../test/support/goal-detail.js';
 import { GoalOverviewItemSchema } from '@activus/contracts';
+import { editorSection } from './editor-section.js';
+
+test('Overview reflects journal edits, seconds, goal progress and persisted theme', async ({
+  page,
+}, info) => {
+  await page.clock.setFixedTime(new Date('2026-09-23T12:00:00Z'));
+  const f = await setup(page);
+  await page.goto('/');
+  const overview = page.locator('overview-page');
+  await expect(overview.locator('dd').first()).toHaveText('2');
+  await expect(overview.locator('dd').last()).toHaveText('1 h 1 min');
+  await expect(
+    overview.getByRole('link', { name: 'Walking distance' }),
+  ).toBeVisible();
+  await expect(overview.locator('.numeric').last()).toContainText('500 km');
+  await overview.getByRole('link', { name: 'Entry 01', exact: true }).click();
+  await page.getByRole('link', { name: 'Edit activity', exact: true }).click();
+  await editorSection(page, 'timing');
+  await page.getByLabel('Seconds', { exact: true }).fill('18');
+  await page.getByRole('button', { name: 'Save changes', exact: true }).click();
+  await expect(
+    page.getByRole('link', { name: 'Edit activity', exact: true }),
+  ).toBeVisible();
+  expect((await f.api.getActivity(f.activities[0]!.id)).durationSeconds).toBe(
+    18,
+  );
+  await page.getByRole('link', { name: 'Activus home' }).click();
+  await expect(overview.locator('dd').last()).toHaveText('1 h 1 min 18 s');
+  await overview.getByRole('link', { name: 'View month' }).click();
+  await expect(page.locator('activity-journal-page .row')).toHaveCount(2);
+  await page.goBack();
+  await expect(overview.locator('dd').last()).toHaveText('1 h 1 min 18 s');
+  const initialTheme = await page.locator('html').getAttribute('data-theme');
+  await page.getByRole('button', { name: /Switch to .* theme/ }).click();
+  await page.reload();
+  await expect(page.locator('html')).toHaveAttribute(
+    'data-theme',
+    initialTheme === 'dark' ? 'light' : 'dark',
+  );
+  await expect(overview.locator('dd').last()).toHaveText('1 h 1 min 18 s');
+  expect(
+    (
+      await new AxeBuilder({ page })
+        .withTags(['wcag2a', 'wcag2aa', 'wcag21aa', 'wcag22aa'])
+        .analyze()
+    ).violations,
+  ).toEqual([]);
+  await page.screenshot({
+    path: info.outputPath('overview-v1.png'),
+    fullPage: true,
+  });
+});
 
 async function setup(page: Page) {
   const f = await journalFixture(2);

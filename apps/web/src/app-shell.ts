@@ -17,6 +17,7 @@ import './features/goals/create-page.js';
 import './features/goals/page.js';
 import './features/goals/detail.js';
 import './features/progress/page.js';
+import './features/overview/page.js';
 import { Sun, Moon, Menu, X, createElement } from 'lucide';
 
 const destinations = [
@@ -404,7 +405,6 @@ export class ActivusApp extends LitElement {
     const isKinds =
       pathname === '/activity-kinds' ||
       /^\/activity-kinds\/[^/]+$/.test(pathname);
-    const current = destinations.find(([, path]) => path === pathname);
     return html`
       <a class="skip" href="#main" @click=${this.skipToMain}>Skip to content</a>
       <div
@@ -533,12 +533,8 @@ export class ActivusApp extends LitElement {
                                       </li>
                                     </ul>
                                   </div>`
-                                : current
-                                  ? html`<h1>${current[0]}</h1>
-                                      <p>
-                                        ${pathname === '/' ? 'Your recorded activities are available in the journal.' : 'This section is planned for a later phase.'}
-                                      </p>
-                                      <a href="/activities">Open journal</a>`
+                                : pathname === '/'
+                                  ? html`<overview-page></overview-page>`
                                   : html`<h1>Page not found</h1>
                                       <p>
                                         This address does not match an Activus
