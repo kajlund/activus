@@ -1,5 +1,12 @@
 import type { ActivitySummary } from '@activus/contracts';
-import type { JournalApi } from '../../services/configuration-api.js';
+import type {
+  ActivityApi,
+  JournalApi,
+} from '../../services/configuration-api.js';
+
+export function previousMonth(now = new Date()) {
+  return currentMonth(new Date(now.getFullYear(), now.getMonth() - 1, 1));
+}
 
 export function currentMonth(now = new Date()) {
   const year = now.getFullYear();
@@ -18,7 +25,7 @@ export function currentMonth(now = new Date()) {
 // Read every page before publishing totals. A failed page never becomes a
 // misleading partial total. This uses the Journal's existing date semantics.
 export async function monthSummary(
-  api: Pick<JournalApi, 'listActivities'>,
+  api: Pick<JournalApi, 'listActivities'> & Pick<ActivityApi, 'getActivity'>,
   month: ReturnType<typeof currentMonth>,
   signal: AbortSignal,
 ) {
@@ -40,20 +47,52 @@ export async function monthSummary(
   let durationSeconds = 0;
   let missingDuration = 0;
   let partial = 0;
-  const kinds = new Map<string, { id: string; name: string; count: number }>();
+  let walkingMetres = 0,
+    walkingCount = 0,
+    missingWalkingDistance = 0;
+  let strengthSeconds = 0,
+    strengthCount = 0,
+    missingStrengthDuration = 0;
+  const kinds = new Map<string, ActivitySummary['kind'] & { count: number }>();
   for (const item of entries.values()) {
     if (item.durationSeconds === null) missingDuration++;
     else durationSeconds += item.durationSeconds;
     if (item.isPartial) partial++;
+    const name = item.kind.name.trim().toLowerCase();
+    if (name === 'walking') {
+      walkingCount++;
+      let distance = item.primaryMeasurement;
+      if (distance?.canonicalUnit !== 'metre') {
+        const detail = await api.getActivity(item.id, signal);
+        distance =
+          detail.measurements.find((m) => m.canonicalUnit === 'metre') ?? null;
+      }
+      if (
+        distance?.canonicalUnit === 'metre' &&
+        (distance.valueType === 'decimal' || distance.valueType === 'integer')
+      )
+        walkingMetres += Number(distance.canonicalValue);
+      else missingWalkingDistance++;
+    }
+    if (name === 'strength training') {
+      strengthCount++;
+      if (item.durationSeconds === null) missingStrengthDuration++;
+      else strengthSeconds += item.durationSeconds;
+    }
     const kind = kinds.get(item.kind.id) ?? {
-      id: item.kind.id,
-      name: item.kind.name,
+      ...item.kind,
       count: 0,
     };
     kind.count++;
     kinds.set(kind.id, kind);
   }
   return {
+    walkingMetres,
+    walkingCount,
+    missingWalkingDistance,
+    strengthSeconds,
+    strengthCount,
+    missingStrengthDuration,
     count: entries.size,
     durationSeconds,
     missingDuration,

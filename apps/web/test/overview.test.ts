@@ -1,5 +1,9 @@
 import { afterEach, expect, it, vi } from 'vitest';
-import { currentMonth, monthSummary } from '../src/features/overview/data.js';
+import {
+  currentMonth,
+  previousMonth,
+  monthSummary,
+} from '../src/features/overview/data.js';
 import { OverviewPage } from '../src/features/overview/page.js';
 import { journalFixture } from './support/journal.js';
 import { fixedDetail } from './support/goal-detail.js';
@@ -35,7 +39,7 @@ it('reads all pages and distinguishes zero, missing duration and partial entries
       pagination: { hasMore: false, nextOffset: null },
     });
   const result = await monthSummary(
-    { listActivities },
+    { listActivities, getActivity: vi.fn() },
     currentMonth(new Date(2026, 8, 10)),
     new AbortController().signal,
   );
@@ -63,7 +67,7 @@ it('does not publish incomplete totals if a later page fails', async () => {
     .mockRejectedValueOnce(new Error('offline'));
   await expect(
     monthSummary(
-      { listActivities },
+      { listActivities, getActivity: vi.fn() },
       currentMonth(),
       new AbortController().signal,
     ),
@@ -76,6 +80,7 @@ it('keeps other sections useful when goals fail, and recovers with retry', async
   const overviewGoals = vi.fn().mockRejectedValue(new Error('offline'));
   page.api = {
     listActivities: f.api.listActivities.bind(f.api),
+    getActivity: f.api.getActivity.bind(f.api),
     overviewGoals,
   };
   document.body.append(page);
@@ -96,4 +101,54 @@ it('keeps other sections useful when goals fail, and recovers with retry', async
   );
   expect(root.querySelector('[role="alert"]')).toBeNull();
   expect(root.textContent).not.toContain('0 of 500');
+});
+
+it('compares the previous calendar month across year and leap-year boundaries', () => {
+  expect(previousMonth(new Date(2026, 0, 31))).toMatchObject({
+    dateFrom: '2025-12-01',
+    dateTo: '2025-12-31',
+  });
+  expect(previousMonth(new Date(2024, 2, 31))).toMatchObject({
+    dateFrom: '2024-02-01',
+    dateTo: '2024-02-29',
+  });
+});
+
+it('totals walking in canonical metres and strength duration, including non-primary distance', async () => {
+  const f = await journalFixture(3);
+  const page = await f.api.listActivities({ limit: 100, offset: 0 });
+  const walk = page.items[0]!;
+  const distance = {
+    ...walk.primaryMeasurement!,
+    canonicalValue: '2500',
+    displayValue: '1.55',
+  };
+  walk.primaryMeasurement = null;
+  page.items[1]!.kind = {
+    ...walk.kind,
+    id: 'strength',
+    name: 'Strength Training',
+  };
+  page.items[1]!.durationSeconds = 3600;
+  page.items[2]!.kind = {
+    ...walk.kind,
+    id: 'strength',
+    name: 'Strength Training',
+  };
+  page.items[2]!.durationSeconds = null;
+  const getActivity = vi.fn().mockResolvedValue({ measurements: [distance] });
+  const result = await monthSummary(
+    { listActivities: vi.fn().mockResolvedValue(page), getActivity },
+    currentMonth(),
+    new AbortController().signal,
+  );
+  expect(result).toMatchObject({
+    walkingMetres: 2500,
+    walkingCount: 1,
+    missingWalkingDistance: 0,
+    strengthSeconds: 3600,
+    strengthCount: 2,
+    missingStrengthDuration: 1,
+  });
+  expect(getActivity).toHaveBeenCalledWith(walk.id, expect.any(AbortSignal));
 });

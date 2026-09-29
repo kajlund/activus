@@ -7,6 +7,7 @@ import type {
 import {
   configurationApi,
   type JournalApi,
+  type ActivityApi,
   type GoalOverviewApi,
 } from '../../services/configuration-api.js';
 import { onRestoredPage } from '../../routes/restored-page.js';
@@ -19,7 +20,8 @@ import {
 } from '../journal/format.js';
 import { readError } from '../journal/presentation.js';
 import { journalPath } from '../journal/state.js';
-import { currentMonth, monthSummary } from './data.js';
+import { activityIcon } from '../activity-kinds/icons.js';
+import { currentMonth, previousMonth, monthSummary } from './data.js';
 
 type Section<T> = { data?: T; error?: unknown; loading: boolean };
 export class OverviewPage extends LitElement {
@@ -28,15 +30,21 @@ export class OverviewPage extends LitElement {
     recent: { state: true },
     goals: { state: true },
     month: { state: true },
+    priorMonth: { state: true },
     period: { state: true },
   };
   api: Pick<JournalApi, 'listActivities'> &
+    Pick<ActivityApi, 'getActivity'> &
     Pick<GoalOverviewApi, 'overviewGoals'> = configurationApi;
   private recent: Section<ActivityListResponse> = { loading: true };
   private goals: Section<GoalOverviewResponse> = { loading: true };
   private month: Section<Awaited<ReturnType<typeof monthSummary>>> = {
     loading: true,
   };
+  private priorMonth: Section<Awaited<ReturnType<typeof monthSummary>>> = {
+    loading: true,
+  };
+  private priorPeriod = previousMonth();
   private period = currentMonth();
   private controller?: AbortController;
   private stopRestored?: () => void;
@@ -56,7 +64,10 @@ export class OverviewPage extends LitElement {
   private async load() {
     this.controller?.abort();
     const controller = (this.controller = new AbortController());
-    this.period = currentMonth();
+    const now = new Date();
+    this.period = currentMonth(now);
+    this.priorPeriod = previousMonth(now);
+    this.priorMonth = { loading: true };
     this.recent = { loading: true };
     this.goals = { loading: true };
     this.month = { loading: true };
@@ -72,6 +83,12 @@ export class OverviewPage extends LitElement {
       }
     };
     await Promise.all([
+      read(
+        () => monthSummary(this.api, this.priorPeriod, controller.signal),
+        (value) => {
+          this.priorMonth = value;
+        },
+      ),
       read(
         () =>
           this.api.listActivities({ limit: 5, offset: 0 }, controller.signal),
@@ -129,27 +146,41 @@ export class OverviewPage extends LitElement {
       </p>
       ${item.goal.scheduleMode === 'recurring' ? html`<p class="muted">This ${item.goal.recurrencePeriod}</p>` : nothing}`;
   }
-  override render() {
-    const summary = this.month.data;
+  private monthCard(
+    section: Section<Awaited<ReturnType<typeof monthSummary>>>,
+    period: ReturnType<typeof currentMonth>,
+    prior: boolean,
+  ) {
+    const summary = section.data;
+    const headingId = prior ? 'prior-month-heading' : 'month-heading';
     return html`
-      <header>
-        <div>
-          <h1>Overview</h1>
-          <p class="muted">
-            Your recent activity and what you’re working toward.
-          </p>
-        </div>
-        <a class="primary" href="/activities/new">New activity</a>
-      </header>
-      <section aria-labelledby="month-heading">
+      <section class="month-card" aria-labelledby=${headingId}>
         <div class="section-heading">
-          <h2 id="month-heading">${this.period.label}</h2>
-          <a href=${journalPath(this.period)}>View month</a>
+          <div>
+            <p class="eyebrow">${prior ? 'Previous month' : 'Month so far'}</p>
+            <h2 id=${headingId}>${period.label}</h2>
+          </div>
+          <a href=${journalPath(period)}>View month</a>
         </div>
-        ${this.status(this.month, 'month summary')}
+        ${this.status(section, 'month summary')}
         ${
           summary
             ? html`
+                <dl class="highlights">
+                  <div>
+                    <dt>${activityIcon('footprints')} Walking</dt>
+                    <dd>
+                      ${summary.walkingCount && summary.missingWalkingDistance === summary.walkingCount ? 'Not recorded' : `${(summary.walkingMetres / 1000).toLocaleString(undefined, { maximumFractionDigits: 2 })} km`}
+                    </dd>
+                  </div>
+                  <div>
+                    <dt>${activityIcon('dumbbell')} Strength training</dt>
+                    <dd>
+                      ${summary.strengthCount && summary.missingStrengthDuration === summary.strengthCount ? 'Not recorded' : duration(summary.strengthSeconds)}
+                    </dd>
+                  </div>
+                </dl>
+                ${summary.missingWalkingDistance ? html`<p class="muted">${summary.missingWalkingDistance} walking activities have no recorded distance.</p>` : nothing}
                 <dl class="totals">
                   <div>
                     <dt>Activities</dt>
@@ -162,16 +193,44 @@ export class OverviewPage extends LitElement {
                     </dd>
                   </div>
                 </dl>
-                ${!summary.count ? html`<p class="muted">No activities recorded this month yet.</p>` : nothing}
+                ${!summary.count ? html`<p class="muted">No activities recorded for this month.</p>` : nothing}
                 ${summary.missingDuration ? html`<p class="muted">${summary.missingDuration} ${summary.missingDuration === 1 ? 'activity has' : 'activities have'} no recorded duration.</p>` : nothing}
                 ${summary.partial ? html`<p class="muted">Includes ${summary.partial} ${summary.partial === 1 ? 'partial activity' : 'partial activities'}.</p>` : nothing}
                 <ul class="breakdown" aria-label="Activities by kind">
-                  ${summary.kinds.map((kind) => html`<li><a href=${journalPath({ ...this.period, activityKindId: kind.id })}>${kind.name}</a><span class="numeric">${kind.count}</span></li>`)}
+                  ${summary.kinds.map(
+                    (kind) =>
+                      html`<li>
+                        <a
+                          href=${journalPath({ ...period, activityKindId: kind.id })}
+                          ><span
+                            class="kind-icon"
+                            style=${`color: ${kind.color}`}
+                            >${activityIcon(kind.iconName)}</span
+                          >${kind.name}</a
+                        ><span class="numeric">${kind.count}</span>
+                      </li>`,
+                  )}
                 </ul>
               `
             : nothing
         }
       </section>
+    `;
+  }
+  override render() {
+    return html`
+      <header>
+        <div>
+          <h1>Overview</h1>
+          <p class="muted">
+            Your recent activity and what you’re working toward.
+          </p>
+        </div>
+        <a class="primary" href="/activities/new">New activity</a>
+      </header>
+      <div class="month-panels">
+        ${this.monthCard(this.month, this.period, false)}${this.monthCard(this.priorMonth, this.priorPeriod, true)}
+      </div>
       <div class="columns">
         <section aria-labelledby="recent-heading">
           <div class="section-heading">
@@ -187,6 +246,10 @@ export class OverviewPage extends LitElement {
                       (item) =>
                         html`<li class="entry">
                           <a class="title" href=${`/activities/${item.id}`}
+                            ><span
+                              class="kind-icon"
+                              style=${`color: ${item.kind.color}`}
+                              >${activityIcon(item.kind.iconName)}</span
                             >${item.name ?? item.kind.name}</a
                           >
                           <p class="muted">
@@ -252,6 +315,52 @@ export class OverviewPage extends LitElement {
   static override styles = [
     ...goalStyles,
     css`
+      .month-panels {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: var(--space-5);
+        margin-bottom: var(--space-6);
+      }
+      .month-card {
+        padding: var(--space-5);
+        border: 1px solid var(--color-border);
+        border-radius: var(--radius-lg);
+        background: var(--color-surface);
+      }
+      .month-card:first-child {
+        border-top: 3px solid var(--color-primary);
+      }
+      .eyebrow {
+        margin: 0 0 var(--space-2);
+        color: var(--color-text-muted);
+        font-size: var(--font-size-small);
+      }
+      .highlights {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: var(--space-4);
+        padding-block: var(--space-4);
+      }
+      .highlights dt,
+      .breakdown a {
+        display: flex;
+        align-items: center;
+        gap: var(--space-2);
+      }
+      .highlights dt svg {
+        flex-shrink: 0;
+        color: var(--color-primary);
+      }
+      .highlights dd {
+        font-size: var(--font-size-page-title);
+        font-weight: 650;
+        overflow-wrap: anywhere;
+      }
+      .kind-icon {
+        display: inline-flex;
+        flex-shrink: 0;
+        margin-right: var(--space-2);
+      }
       section {
         padding-block: var(--space-5);
         border-top: 1px solid var(--color-border);
@@ -319,6 +428,7 @@ export class OverviewPage extends LitElement {
         overflow-wrap: anywhere;
       }
       @media (max-width: 700px) {
+        .month-panels,
         .columns {
           grid-template-columns: minmax(0, 1fr);
           gap: 0;
