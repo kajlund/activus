@@ -22,7 +22,8 @@
     "test:db": "npm run build --workspace @activus/contracts && npm run test:db --workspace @activus/api --",
     "test:browser": "npm run build --workspace @activus/contracts && npm run build --workspace @activus/web && npm run test:browser --workspace @activus/web --",
     "test:browser:edge": "npm run build --workspace @activus/contracts && npm run build --workspace @activus/web && npm exec --workspace @activus/web -- playwright test --config playwright.edge.config.ts",
-    "audit": "npm audit"
+    "audit": "npm audit",
+    "lint:fix": "eslint . --fix --max-warnings 0"
   },
   "devDependencies": {
     "@eslint/js": "10.0.1",
@@ -33,7 +34,8 @@
     "prettier": "3.9.6",
     "typescript": "5.9.3",
     "typescript-eslint": "8.69.0",
-    "vitest": "5.0.0"
+    "vitest": "5.0.0",
+    "globals": "14.0.0"
   },
   "workspaces": [
     "packages/*",

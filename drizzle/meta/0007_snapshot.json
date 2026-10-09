@@ -207,12 +207,8 @@
           "name": "activities_activity_kind_id_activity_kinds_id_fk",
           "tableFrom": "activities",
           "tableTo": "activity_kinds",
-          "columnsFrom": [
-            "activity_kind_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["activity_kind_id"],
+          "columnsTo": ["id"],
           "onDelete": "restrict",
           "onUpdate": "no action"
         },
@@ -220,14 +216,8 @@
           "name": "activities_variant_kind_fk",
           "tableFrom": "activities",
           "tableTo": "activity_variants",
-          "columnsFrom": [
-            "activity_variant_id",
-            "activity_kind_id"
-          ],
-          "columnsTo": [
-            "id",
-            "activity_kind_id"
-          ],
+          "columnsFrom": ["activity_variant_id", "activity_kind_id"],
+          "columnsTo": ["id", "activity_kind_id"],
           "onDelete": "restrict",
           "onUpdate": "no action"
         }
@@ -421,12 +411,8 @@
           "name": "activity_kinds_primary_measurement_definition_id_measurement_definitions_id_fk",
           "tableFrom": "activity_kinds",
           "tableTo": "measurement_definitions",
-          "columnsFrom": [
-            "primary_measurement_definition_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["primary_measurement_definition_id"],
+          "columnsTo": ["id"],
           "onDelete": "restrict",
           "onUpdate": "no action"
         }
@@ -538,12 +524,8 @@
           "name": "activity_measurements_activity_id_activities_id_fk",
           "tableFrom": "activity_measurements",
           "tableTo": "activities",
-          "columnsFrom": [
-            "activity_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["activity_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         },
@@ -551,12 +533,8 @@
           "name": "activity_measurements_measurement_definition_id_measurement_definitions_id_fk",
           "tableFrom": "activity_measurements",
           "tableTo": "measurement_definitions",
-          "columnsFrom": [
-            "measurement_definition_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["measurement_definition_id"],
+          "columnsTo": ["id"],
           "onDelete": "restrict",
           "onUpdate": "no action"
         }
@@ -566,10 +544,7 @@
         "activity_measurements_activity_definition_unique": {
           "name": "activity_measurements_activity_definition_unique",
           "nullsNotDistinct": false,
-          "columns": [
-            "activity_id",
-            "measurement_definition_id"
-          ]
+          "columns": ["activity_id", "measurement_definition_id"]
         }
       },
       "policies": {},
@@ -645,12 +620,8 @@
           "name": "activity_tags_activity_id_activities_id_fk",
           "tableFrom": "activity_tags",
           "tableTo": "activities",
-          "columnsFrom": [
-            "activity_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["activity_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         },
@@ -658,12 +629,8 @@
           "name": "activity_tags_tag_id_tags_id_fk",
           "tableFrom": "activity_tags",
           "tableTo": "tags",
-          "columnsFrom": [
-            "tag_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["tag_id"],
+          "columnsTo": ["id"],
           "onDelete": "restrict",
           "onUpdate": "no action"
         }
@@ -671,10 +638,7 @@
       "compositePrimaryKeys": {
         "activity_tags_activity_id_tag_id_pk": {
           "name": "activity_tags_activity_id_tag_id_pk",
-          "columns": [
-            "activity_id",
-            "tag_id"
-          ]
+          "columns": ["activity_id", "tag_id"]
         }
       },
       "uniqueConstraints": {},
@@ -816,12 +780,8 @@
           "name": "activity_variants_activity_kind_id_activity_kinds_id_fk",
           "tableFrom": "activity_variants",
           "tableTo": "activity_kinds",
-          "columnsFrom": [
-            "activity_kind_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["activity_kind_id"],
+          "columnsTo": ["id"],
           "onDelete": "restrict",
           "onUpdate": "no action"
         }
@@ -831,10 +791,7 @@
         "activity_variants_id_kind_unique": {
           "name": "activity_variants_id_kind_unique",
           "nullsNotDistinct": false,
-          "columns": [
-            "id",
-            "activity_kind_id"
-          ]
+          "columns": ["id", "activity_kind_id"]
         }
       },
       "policies": {},
@@ -899,12 +856,8 @@
           "name": "goal_tags_goal_id_goals_id_fk",
           "tableFrom": "goal_tags",
           "tableTo": "goals",
-          "columnsFrom": [
-            "goal_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["goal_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         },
@@ -912,12 +865,8 @@
           "name": "goal_tags_tag_id_tags_id_fk",
           "tableFrom": "goal_tags",
           "tableTo": "tags",
-          "columnsFrom": [
-            "tag_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["tag_id"],
+          "columnsTo": ["id"],
           "onDelete": "restrict",
           "onUpdate": "no action"
         }
@@ -925,10 +874,7 @@
       "compositePrimaryKeys": {
         "goal_tags_goal_id_tag_id_pk": {
           "name": "goal_tags_goal_id_tag_id_pk",
-          "columns": [
-            "goal_id",
-            "tag_id"
-          ]
+          "columns": ["goal_id", "tag_id"]
         }
       },
       "uniqueConstraints": {},
@@ -1108,12 +1054,8 @@
           "name": "goals_measurement_definition_id_measurement_definitions_id_fk",
           "tableFrom": "goals",
           "tableTo": "measurement_definitions",
-          "columnsFrom": [
-            "measurement_definition_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["measurement_definition_id"],
+          "columnsTo": ["id"],
           "onDelete": "restrict",
           "onUpdate": "no action"
         },
@@ -1121,12 +1063,8 @@
           "name": "goals_activity_kind_id_activity_kinds_id_fk",
           "tableFrom": "goals",
           "tableTo": "activity_kinds",
-          "columnsFrom": [
-            "activity_kind_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["activity_kind_id"],
+          "columnsTo": ["id"],
           "onDelete": "restrict",
           "onUpdate": "no action"
         },
@@ -1134,14 +1072,8 @@
           "name": "goals_variant_kind_fk",
           "tableFrom": "goals",
           "tableTo": "activity_variants",
-          "columnsFrom": [
-            "activity_variant_id",
-            "activity_kind_id"
-          ],
-          "columnsTo": [
-            "id",
-            "activity_kind_id"
-          ],
+          "columnsFrom": ["activity_variant_id", "activity_kind_id"],
+          "columnsTo": ["id", "activity_kind_id"],
           "onDelete": "restrict",
           "onUpdate": "no action"
         }
@@ -1247,12 +1179,8 @@
           "name": "legacy_reference_mappings_kind_id_activity_kinds_id_fk",
           "tableFrom": "legacy_reference_mappings",
           "tableTo": "activity_kinds",
-          "columnsFrom": [
-            "kind_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["kind_id"],
+          "columnsTo": ["id"],
           "onDelete": "restrict",
           "onUpdate": "no action"
         },
@@ -1260,12 +1188,8 @@
           "name": "legacy_reference_mappings_variant_id_activity_variants_id_fk",
           "tableFrom": "legacy_reference_mappings",
           "tableTo": "activity_variants",
-          "columnsFrom": [
-            "variant_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["variant_id"],
+          "columnsTo": ["id"],
           "onDelete": "restrict",
           "onUpdate": "no action"
         },
@@ -1273,12 +1197,8 @@
           "name": "legacy_reference_mappings_definition_id_measurement_definitions_id_fk",
           "tableFrom": "legacy_reference_mappings",
           "tableTo": "measurement_definitions",
-          "columnsFrom": [
-            "definition_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["definition_id"],
+          "columnsTo": ["id"],
           "onDelete": "restrict",
           "onUpdate": "no action"
         }
@@ -1286,12 +1206,7 @@
       "compositePrimaryKeys": {
         "legacy_reference_mappings_source_collection_source_id_role_pk": {
           "name": "legacy_reference_mappings_source_collection_source_id_role_pk",
-          "columns": [
-            "source",
-            "collection",
-            "source_id",
-            "role"
-          ]
+          "columns": ["source", "collection", "source_id", "role"]
         }
       },
       "uniqueConstraints": {},
@@ -1517,12 +1432,8 @@
           "name": "measurement_definitions_activity_kind_id_activity_kinds_id_fk",
           "tableFrom": "measurement_definitions",
           "tableTo": "activity_kinds",
-          "columnsFrom": [
-            "activity_kind_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["activity_kind_id"],
+          "columnsTo": ["id"],
           "onDelete": "restrict",
           "onUpdate": "no action"
         },
@@ -1530,14 +1441,8 @@
           "name": "measurement_definitions_variant_kind_fk",
           "tableFrom": "measurement_definitions",
           "tableTo": "activity_variants",
-          "columnsFrom": [
-            "activity_variant_id",
-            "activity_kind_id"
-          ],
-          "columnsTo": [
-            "id",
-            "activity_kind_id"
-          ],
+          "columnsFrom": ["activity_variant_id", "activity_kind_id"],
+          "columnsTo": ["id", "activity_kind_id"],
           "onDelete": "restrict",
           "onUpdate": "no action"
         }
