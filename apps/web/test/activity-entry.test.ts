@@ -12,6 +12,7 @@ import {
   measurementInput,
   activityStartTime,
   activityStartInstant,
+  helsinkiDate,
 } from '../src/features/activities/values.js';
 import { editorFixture, validMeasurement } from './support/activity-editor.js';
 import {
@@ -99,7 +100,7 @@ it('loads new entry without inventing a kind or measurement; selection applies c
   expect(
     el.shadowRoot!.querySelector('input[name=activityKind]:checked'),
   ).toBeNull();
-  expect(field(el, 'activityDate').value).toBe(localDate());
+  expect(field(el, 'activityDate').value).toBe(helsinkiDate());
   expect(el.dirty).toBe(false);
   await selectKind(el);
   expect(

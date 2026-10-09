@@ -15,6 +15,7 @@ import {
   type MeasurementDefinition,
   type Tag,
   type ActivityMeasurementInput,
+  type ActivitySummary,
   type UpdateActivityRequest,
 } from '@activus/contracts';
 import {
@@ -25,6 +26,7 @@ import {
   type MeasurementApi,
   type TagApi,
   type ActivityApi,
+  type JournalApi,
 } from '../../services/configuration-api.js';
 import { navigate } from '../../routes/navigation.js';
 import { activityIcon } from '../activity-kinds/icons.js';
@@ -32,47 +34,34 @@ import { managementStyles } from '../activity-kinds/styles.js';
 import {
   durationSeconds,
   splitDuration,
-  localDate,
+  helsinkiDate,
   activityStartTime,
   activityStartInstant,
   isOverallDuration,
   measurementInput,
 } from './values.js';
 import './tag-picker.js';
+import {
+  freshDraft,
+  initializeRepeat,
+  recentChoices,
+  takeRepeatOptions,
+  emptyCopy,
+  type ActivityDraft,
+  type CopyOptions,
+  type CopiedValue,
+  type RepeatWarning,
+} from './repeat.js';
+import { journalDate } from '../journal/format.js';
 import { safeReturn, withReturn, withNotice } from '../journal/state.js';
 
 export type EditorApi = Pick<ConfigurationApi, 'listKinds' | 'listVariants'> &
   Pick<MeasurementApi, 'listMeasurements'> &
   Pick<TagApi, 'listTags'> &
-  ActivityApi;
-type Draft = {
-  activityKindId: string;
-  activityVariantId: string;
-  activityDate: string;
-  start: string;
-  hours: string;
-  minutes: string;
-  seconds: string;
-  name: string;
-  notes: string;
-  effort: string;
-  feeling: string;
-  tagIds: string[];
-};
-const fresh = (): Draft => ({
-  activityKindId: '',
-  activityVariantId: '',
-  activityDate: localDate(),
-  start: '',
-  hours: '',
-  minutes: '',
-  seconds: '',
-  name: '',
-  notes: '',
-  effort: '',
-  feeling: '',
-  tagIds: [],
-});
+  ActivityApi &
+  Partial<Pick<JournalApi, 'listActivities'>>;
+type Draft = ActivityDraft;
+const fresh = freshDraft;
 export class ActivityEditorPage extends LitElement {
   static override properties = {
     route: { type: String },
@@ -91,6 +80,14 @@ export class ActivityEditorPage extends LitElement {
     status: { state: true },
     openSection: { state: true },
     kindSearch: { state: true },
+    recent: { state: true },
+    recentError: { state: true },
+    recentLoading: { state: true },
+    basedOn: { state: true },
+    repeatWarnings: { state: true },
+    needsVariantChoice: { state: true },
+    repeatError: { state: true },
+    applyingRepeat: { state: true },
   };
   route = location.pathname + location.search;
   api: EditorApi = configurationApi;
@@ -114,6 +111,18 @@ export class ActivityEditorPage extends LitElement {
   private status = '';
   private openSection = 'activity';
   private kindSearch = '';
+  private recent: ActivitySummary[] = [];
+  private recentError: unknown;
+  private recentLoading = false;
+  private recentRead?: AbortController;
+  private basedOn: string | undefined;
+  private repeatError: unknown;
+  private applyingRepeat = false;
+  private repeatWarnings: RepeatWarning[] = [];
+  private copied: Record<string, CopiedValue> = {};
+  private needsVariantChoice = false;
+  private repeatOptions: CopyOptions = { ...emptyCopy };
+  private repeatSourceId: string | undefined;
   private get visibleDefinitions() {
     return this.definitions.filter((d) => !isOverallDuration(d));
   }
@@ -181,6 +190,7 @@ export class ActivityEditorPage extends LitElement {
   }
   override disconnectedCallback() {
     this.reads?.abort();
+    this.recentRead?.abort();
     this.selection?.abort();
     this.mutation?.abort();
     this.generation++;
@@ -204,6 +214,22 @@ export class ActivityEditorPage extends LitElement {
     this.errors = {};
     this.configurationError = undefined;
     this.status = '';
+    this.basedOn = undefined;
+    this.applyingRepeat = false;
+    this.repeatError = undefined;
+    this.copied = {};
+    this.repeatWarnings = [];
+    this.needsVariantChoice = false;
+    const sourceId = !this.activityId
+      ? new URL(this.route, location.origin).searchParams.get('repeat')
+      : null;
+    if (sourceId !== this.repeatSourceId) {
+      this.repeatSourceId = sourceId ?? undefined;
+      this.repeatOptions = sourceId
+        ? takeRepeatOptions(sourceId)
+        : { ...emptyCopy };
+    }
+    if (!this.activityId) void this.loadRecent();
     try {
       const [kinds, tags, activity] = await Promise.all([
         this.api.listKinds(!!this.activityId, controller.signal),
@@ -263,12 +289,175 @@ export class ActivityEditorPage extends LitElement {
       this.initialValues = { ...this.values };
       this.loading = false;
       if (this.draft.activityKindId) await this.resolve(true);
+      if (sourceId && generation === this.generation)
+        await this.initializeFrom(sourceId, this.repeatOptions, false);
     } catch (error) {
       if (generation === this.generation && !controller.signal.aborted)
         this.error = error;
     } finally {
       if (generation === this.generation) this.loading = false;
     }
+  }
+  private async loadRecent() {
+    this.recentRead?.abort();
+    if (!this.api.listActivities) return;
+    const controller = (this.recentRead = new AbortController());
+    this.recentLoading = true;
+    this.recentError = undefined;
+    try {
+      const result = await this.api.listActivities(
+        { limit: 30, offset: 0 },
+        controller.signal,
+      );
+      if (!controller.signal.aborted) this.recent = recentChoices(result.items);
+    } catch (error) {
+      if (!controller.signal.aborted) this.recentError = error;
+    } finally {
+      if (!controller.signal.aborted) this.recentLoading = false;
+    }
+  }
+  private async initializeFrom(
+    id: string,
+    options = emptyCopy,
+    confirm = true,
+  ) {
+    if (
+      this.busy ||
+      (confirm &&
+        this.dirty &&
+        !window.confirm('Replace your unsaved activity setup?'))
+    )
+      return;
+    this.selection?.abort();
+    const controller = (this.selection = new AbortController());
+    const generation = ++this.selectionGeneration;
+    this.resolving = true;
+    this.configurationError = undefined;
+    this.repeatError = undefined;
+    this.repeatSourceId = id;
+    this.repeatOptions = { ...options };
+    this.applyingRepeat = true;
+    try {
+      const source = await this.api.getActivity(id, controller.signal);
+      const kinds = await this.api.listKinds(false, controller.signal);
+      const activeKind = kinds.items.some(
+        (k) => k.id === source.activityKindId && !k.isArchived,
+      );
+      const variants = activeKind
+        ? (
+            await this.api.listVariants(
+              source.activityKindId,
+              false,
+              controller.signal,
+            )
+          ).items
+        : [];
+      const classification = initializeRepeat(
+        source,
+        { kinds: kinds.items, variants, definitions: [] },
+        emptyCopy,
+        helsinkiDate(),
+      );
+      const definitions = activeKind
+        ? (
+            await this.api.listMeasurements(
+              source.activityKindId,
+              false,
+              classification.draft.activityVariantId || undefined,
+              controller.signal,
+            )
+          ).items
+        : [];
+      if (controller.signal.aborted || generation !== this.selectionGeneration)
+        return;
+      const setup = initializeRepeat(
+        source,
+        { kinds: kinds.items, variants, definitions },
+        options,
+        helsinkiDate(),
+      );
+      this.kinds = kinds.items.filter((k) => !k.isArchived);
+      this.variants = variants.filter((v) => !v.isArchived);
+      this.definitions = definitions.filter(
+        (d) =>
+          !d.isArchived &&
+          (!d.activityVariantId ||
+            d.activityVariantId === setup.draft.activityVariantId),
+      );
+      this.knownDefinitions.clear();
+      for (const d of this.definitions) this.knownDefinitions.set(d.id, d);
+      this.draft = setup.draft;
+      this.values = setup.values;
+      this.copied = setup.copied;
+      this.repeatWarnings = setup.warnings;
+      this.needsVariantChoice = setup.warnings.some(
+        (w) => w.code === 'variant',
+      );
+      this.basedOn = source.activityDate;
+      const url = new URL(this.route, location.origin);
+      url.searchParams.set('repeat', id);
+      history.replaceState(history.state, '', url.pathname + url.search);
+      this.status = options.copyValues
+        ? 'Duration and compatible measurements copied. Review and edit before saving.'
+        : 'New activity setup ready. Duration and measurement values are empty.';
+      if (options.copyNotes && source.notes) this.status += ' Notes copied.';
+      this.openSection = 'activity';
+      this.kindSearch = '';
+      this.errors = {};
+      this.saveError = undefined;
+      this.applyingRepeat = false;
+      this.resolving = false;
+      await this.updateComplete;
+      if (!controller.signal.aborted && generation === this.selectionGeneration)
+        this.renderRoot.querySelector<HTMLElement>('#activityKindId')?.focus();
+    } catch (error) {
+      if (
+        !controller.signal.aborted &&
+        generation === this.selectionGeneration
+      ) {
+        this.configurationError = error;
+        this.repeatError = error;
+      }
+    } finally {
+      if (generation === this.selectionGeneration) {
+        this.resolving = false;
+        this.applyingRepeat = false;
+      }
+    }
+  }
+  private startBlank() {
+    if (
+      this.busy ||
+      (this.dirty && !window.confirm('Clear your unsaved activity setup?'))
+    )
+      return;
+    this.selection?.abort();
+    this.selectionGeneration++;
+    this.draft = fresh();
+    this.values = {};
+    this.copied = {};
+    this.definitions = [];
+    this.variants = [];
+    this.initialDraft = structuredClone(this.draft);
+    this.initialValues = {};
+    this.basedOn = undefined;
+    this.repeatWarnings = [];
+    this.needsVariantChoice = false;
+    this.repeatError = undefined;
+    this.applyingRepeat = false;
+    this.configurationError = undefined;
+    this.saveError = undefined;
+    this.errors = {};
+    this.resolving = false;
+    this.openSection = 'activity';
+    this.kindSearch = '';
+    this.status = 'Blank activity ready.';
+    this.repeatSourceId = undefined;
+    this.repeatOptions = { ...emptyCopy };
+    const url = new URL(this.route, location.origin);
+    url.searchParams.delete('repeat');
+    history.replaceState(history.state, '', url.pathname + url.search);
+    this.route = url.pathname + url.search;
   }
   private async resolve(loadVariants: boolean, applyDefault = false) {
     this.selection?.abort();
@@ -347,11 +536,15 @@ export class ActivityEditorPage extends LitElement {
     this.saveError = undefined;
     this.status = '';
     if (key === 'activityKindId') {
+      this.needsVariantChoice = false;
       this.draft = { ...this.draft, activityVariantId: '' };
       this.variants = [];
       void this.resolve(true, true);
     }
-    if (key === 'activityVariantId') void this.resolve(false);
+    if (key === 'activityVariantId') {
+      this.needsVariantChoice = false;
+      void this.resolve(false);
+    }
   }
   private get hiddenValues() {
     return Object.entries(this.values).filter(
@@ -472,6 +665,9 @@ export class ActivityEditorPage extends LitElement {
     )
       errors['activityVariantId'] = 'Choose a variant belonging to this kind.';
     const measurements: ActivityMeasurementInput[] = [];
+    if (this.needsVariantChoice)
+      errors.activityVariantId =
+        'Choose an active variant or confirm No variant.';
     for (const d of this.definitions) {
       const value = this.values[d.id] ?? '';
       if (isOverallDuration(d)) {
@@ -496,10 +692,29 @@ export class ActivityEditorPage extends LitElement {
         continue;
       }
       try {
+        const copied = this.copied[d.id];
+        if (
+          copied &&
+          value === copied.text &&
+          (copied.input.valueType !== d.valueType ||
+            ('unitId' in copied.input
+              ? (copied.input.unitId ?? null)
+              : null) !== d.canonicalUnit)
+        )
+          throw new Error(
+            'This copied value no longer matches the current definition. Enter it again.',
+          );
         const input =
           this.original && value === this.initialValues[d.id]
             ? this.originalInput(d.id)
-            : measurementInput(d, value);
+            : copied &&
+                value === copied.text &&
+                copied.input.valueType === d.valueType
+              ? measurementInput(
+                  { ...d, displayUnit: d.canonicalUnit },
+                  String(copied.input.value),
+                )
+              : measurementInput(d, value);
         if (input) measurements.push(input);
         else if (d.isRequired && !d.isArchived && !this.original?.isPartial)
           errors[`m-${d.id}`] = 'Enter this required measurement.';
@@ -891,8 +1106,65 @@ export class ActivityEditorPage extends LitElement {
                         >`
                     : nothing
                 }
-                <form novalidate @submit=${this.save} aria-busy=${this.busy}>
-                  <fieldset ?disabled=${this.busy}>
+                ${
+                  !this.activityId
+                    ? html`<section
+                        class="quick-add"
+                        aria-labelledby="quick-add-title"
+                      >
+                        <div class="quick-heading">
+                          <h2 id="quick-add-title">Quick Add</h2>
+                          <button
+                            type="button"
+                            ?disabled=${this.busy}
+                            @click=${this.startBlank}
+                          >
+                            Start blank
+                          </button>
+                        </div>
+                        <p class="help">
+                          Reuse a recent setup with empty values.
+                        </p>
+                        ${this.recentLoading ? html`<p role="status">Loading recent choices…</p>` : nothing}
+                        ${
+                          this.recentError
+                            ? html`<p>
+                                  Recent choices are unavailable. You can still
+                                  start blank.
+                                </p>
+                                <button type="button" @click=${this.loadRecent}>
+                                  Retry recent choices
+                                </button>`
+                            : nothing
+                        }
+                        <div class="quick-choices">
+                          ${this.recent.map((a) => html`<button type="button" ?disabled=${this.busy || this.resolving} @click=${() => this.initializeFrom(a.id)}>${a.kind.name}${a.variant ? ` / ${a.variant.name}` : ''}${a.name ? ` · ${a.name}` : ''}</button>`)}
+                        </div>
+                        ${!this.recentLoading && !this.recentError && !this.recent.length ? html`<p class="help">Recent setups will appear after you record activities.</p>` : nothing}
+                      </section>`
+                    : nothing
+                }
+                ${this.repeatError ? html`<div>Could not load the activity setup. ${this.errorBox(this.repeatError)}<button type="button" ?disabled=${this.resolving} @click=${() => this.repeatSourceId && this.initializeFrom(this.repeatSourceId, this.repeatOptions, false)}>Retry activity setup</button></div>` : nothing}
+                ${this.applyingRepeat ? html`<p role="status">Loading activity setup…</p>` : nothing}
+                ${this.basedOn ? html`<p class="repeat-notice">New activity · Based on activity from ${journalDate(this.basedOn)}. The original will remain unchanged. ${this.repeatOptions.copyValues ? 'Duration and compatible measurements were copied; review them before saving.' : 'Started with empty duration and measurements.'} ${this.repeatOptions.copyNotes ? 'Notes were copied.' : ''}</p>` : nothing}
+                ${
+                  this.repeatWarnings.length
+                    ? html`<div class="repeat-notice" role="status">
+                        <ul>
+                          ${this.repeatWarnings.map((w) => html`<li>${w.message}</li>`)}
+                        </ul>
+                        ${this.needsVariantChoice ? html`<button type="button" ?disabled=${this.busy || this.resolving} @click=${() => this.change('activityVariantId', '')}>Use no variant</button>` : nothing}
+                      </div>`
+                    : nothing
+                }
+                <form
+                  novalidate
+                  @submit=${this.save}
+                  aria-busy=${this.busy || this.resolving}
+                >
+                  <fieldset
+                    ?disabled=${this.busy || this.applyingRepeat || !!this.repeatError}
+                  >
                     <legend class="sr-only">Activity details</legend>
                     <section
                       data-section="activity"
@@ -1099,6 +1371,47 @@ export class ActivityEditorPage extends LitElement {
     managementStyles,
     accordionStyles,
     css`
+      .quick-add {
+        margin-block: 12px 16px;
+        padding-block: 8px 12px;
+        border-block: 1px solid var(--color-border);
+      }
+      .quick-heading,
+      .quick-choices {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        align-items: center;
+      }
+      .quick-heading {
+        justify-content: space-between;
+      }
+      .quick-heading h2 {
+        margin: 0;
+        font-size: var(--font-size-component-title);
+      }
+      .quick-heading button,
+      .quick-choices button {
+        padding: 6px 10px;
+        min-height: 36px;
+        font-size: var(--font-size-small);
+      }
+      .quick-choices button {
+        max-width: 100%;
+        white-space: normal;
+        overflow-wrap: anywhere;
+        text-align: left;
+      }
+      .repeat-notice {
+        padding: 10px 12px;
+        background: var(--color-primary-soft);
+        border-radius: var(--radius-sm);
+        font-size: var(--font-size-small);
+      }
+      .repeat-notice ul {
+        margin: 0;
+        padding-left: 18px;
+      }
       :host {
         max-width: var(--editor-width);
         margin: 0 auto;

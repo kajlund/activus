@@ -4,6 +4,7 @@ import {
   measurementUnits,
   type ActivityMeasurementInput,
   type MeasurementDefinition,
+  type ActivityMeasurement,
 } from '@activus/contracts';
 
 // Only the ordinary configured Duration aliases the common activity field.
@@ -29,6 +30,8 @@ function helsinkiLocal(date: Date) {
   );
   return `${parts.year}-${parts.month}-${parts.day}T${parts.hour}:${parts.minute}`;
 }
+export const helsinkiDate = (date = new Date()) =>
+  helsinkiLocal(date).slice(0, 10);
 export function activityStartTime(iso: string | null) {
   return iso ? helsinkiLocal(new Date(iso)).slice(11) : '';
 }
@@ -89,6 +92,30 @@ function compare(a: ReturnType<typeof decimal>, b: ReturnType<typeof decimal>) {
 function stringify({ n, scale }: ReturnType<typeof decimal>) {
   const digits = (n < 0n ? -n : n).toString().padStart(scale + 1, '0');
   return `${n < 0n ? '-' : ''}${scale ? `${digits.slice(0, -scale)}.${digits.slice(-scale)}` : digits}`;
+}
+// Match the API's display-only rounding. Repeated values retain their separately
+// validated canonical input until the user edits the displayed text.
+export function measurementDraftText(
+  d: MeasurementDefinition,
+  m: ActivityMeasurement,
+) {
+  if (m.valueType === 'text' || m.valueType === 'boolean')
+    return String(m.canonicalValue);
+  if (d.displayUnit === 'hour-minute')
+    return splitDuration(Number(m.canonicalValue))
+      .map((v, i) => (i ? v.padStart(2, '0') : v))
+      .join(':');
+  const unit = measurementUnits.find((u) => u.id === d.displayUnit);
+  const a = decimal(String(m.canonicalValue));
+  const b = decimal(String(unit?.factorToCanonical ?? 1));
+  const precision = d.precision ?? unit?.defaultPrecision ?? 0;
+  const numerator = a.n * 10n ** BigInt(b.scale + precision);
+  const denominator = b.n * 10n ** BigInt(a.scale);
+  let n = numerator / denominator;
+  const remainder = numerator % denominator;
+  if ((remainder < 0n ? -remainder : remainder) * 2n >= denominator)
+    n += numerator < 0n ? -1n : 1n;
+  return stringify(normalize(n, precision));
 }
 export function measurementInput(
   d: MeasurementDefinition,

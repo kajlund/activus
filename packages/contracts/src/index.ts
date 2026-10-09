@@ -11,3 +11,4 @@ export * from './measurement-units.js';
 export * from './activities.js';
 export * from './tags.js';
 export * from './goals.js';
+export * from './progress.js';

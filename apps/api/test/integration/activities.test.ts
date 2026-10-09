@@ -1,4 +1,9 @@
 import { randomUUID } from 'node:crypto';
+import {
+  createProgressRepository,
+  progressSnapshot,
+} from '../../src/modules/progress/repository.js';
+import { readProgress } from '../../src/modules/progress/service.js';
 import { mkdir, writeFile } from 'node:fs/promises';
 import { drizzle } from 'drizzle-orm/node-postgres';
 import * as schema from '../../src/db/schema.js';
@@ -133,6 +138,187 @@ describe.skipIf(!safe)('PostgreSQL activities and typed measurements', () => {
   afterAll(async () => {
     if (database) await database.close();
   });
+  it('progress omits missing measurements from totals and averages, preserving zero and empty buckets', async () => {
+    const definition = await definitions.create(kindId, {
+      ...validMeasurement,
+      aggregation: 'average',
+    });
+    const input = (value: string) => [
+      {
+        measurementDefinitionId: definition.id,
+        valueType: 'decimal',
+        value,
+        unitId: 'metre',
+      },
+    ];
+    await create({
+      activityDate: '2024-02-01',
+      durationSeconds: 60,
+      measurements: input('10'),
+    });
+    await create({ activityDate: '2024-02-02', measurements: input('0') });
+    await create({ activityDate: '2024-02-03' });
+    const q = {
+      period: 'custom' as const,
+      startDate: '2024-02-01',
+      endDate: '2024-02-04',
+      kindId,
+      metricId: definition.id,
+    };
+    const repo = createProgressRepository(database.db);
+    const result = await readProgress(repo, q);
+    expect(result.summaries.map((s) => s.value?.canonical)).toEqual([
+      '3',
+      '60',
+      '5',
+    ]);
+    expect(result.trend.map((b) => b.value?.canonical ?? null)).toEqual([
+      '10',
+      '0',
+      null,
+      null,
+    ]);
+    expect(result.summaries[2]?.previous).toBeNull();
+    await database.db
+      .update(measurementDefinitions)
+      .set({ aggregation: 'total' })
+      .where(eq(measurementDefinitions.id, definition.id));
+    expect((await readProgress(repo, q)).summaries[2]?.value?.canonical).toBe(
+      '10',
+    );
+    const empty = await readProgress(repo, {
+      ...q,
+      startDate: '2000-01-01',
+      endDate: '2000-01-02',
+    });
+    expect(empty.summaries.map((s) => s.value?.canonical ?? null)).toEqual([
+      '0',
+      null,
+      null,
+    ]);
+  });
+
+  it('progress filters kind and variant, respects latest/minimum and validates the API scope', async () => {
+    const variant = await variants.create(kindId, validVariant);
+    const definition = await definitions.create(kindId, {
+      ...validMeasurement,
+      aggregation: 'latest',
+    });
+    const input = (value: string) => [
+      {
+        measurementDefinitionId: definition.id,
+        valueType: 'decimal',
+        value,
+        unitId: 'metre',
+      },
+    ];
+    await create({
+      activityDate: '2024-02-01',
+      activityVariantId: variant.id,
+      measurements: input('2'),
+    });
+    await create({
+      activityDate: '2024-02-02',
+      activityVariantId: variant.id,
+      measurements: input('5'),
+    });
+    await create({ activityDate: '2024-02-03', activityVariantId: variant.id });
+    await create({ activityDate: '2024-02-02', measurements: input('50') });
+    await create({
+      activityKindId: await newKind(),
+      activityDate: '2024-02-02',
+    });
+    await database.db
+      .update(activityKinds)
+      .set({ primaryMeasurementDefinitionId: definition.id })
+      .where(eq(activityKinds.id, kindId));
+    const q = { period: 'all' as const, kindId, variantId: variant.id };
+    const repo = createProgressRepository(database.db);
+    const result = await readProgress(repo, q, '2024-02-29');
+    expect(result.metricId).toBe(definition.id);
+    expect(result.summaries[0]?.value?.canonical).toBe('3');
+    expect(result.summaries[2]?.value?.canonical).toBe('5');
+    await database.db
+      .update(measurementDefinitions)
+      .set({ aggregation: 'minimum' })
+      .where(eq(measurementDefinitions.id, definition.id));
+    expect((await readProgress(repo, q)).summaries[2]?.value?.canonical).toBe(
+      '2',
+    );
+    const app = createApp(env, pino({ level: 'silent' }), {
+      progress: progressSnapshot(database.db),
+    });
+    expect(
+      (
+        await app.request(
+          `/api/v1/progress?kindId=${kindId}&variantId=${randomUUID()}`,
+        )
+      ).status,
+    ).toBe(400);
+    expect((await app.request('/api/v1/progress?kindId=bad')).status).toBe(400);
+    expect(
+      (
+        await app.request(
+          `/api/v1/progress?kindId=${kindId}&metricId=${randomUUID()}`,
+        )
+      ).status,
+    ).toBe(400);
+    expect(
+      (await app.request(`/api/v1/progress?kindId=${kindId}&period=all`))
+        .status,
+    ).toBe(200);
+  });
+
+  it('progress personal records honor eligibility, both directions, earliest ties and source activities', async () => {
+    const high = await definitions.create(kindId, validMeasurement);
+    const low = await definitions.create(kindId, {
+      ...validMeasurement,
+      name: 'Low',
+      personalBestDirection: 'lowest',
+    });
+    const none = await definitions.create(kindId, {
+      ...validMeasurement,
+      name: 'Ineligible',
+      personalBestDirection: 'none',
+    });
+    const input = (value: string) =>
+      [high, low, none].map((d) => ({
+        measurementDefinitionId: d.id,
+        valueType: 'decimal',
+        value,
+        unitId: 'metre',
+      }));
+    const earliest = await create({
+      activityDate: '2024-02-01',
+      measurements: input('10'),
+    });
+    await create({ activityDate: '2024-02-02', measurements: input('10') });
+    const lowest = await create({
+      activityDate: '2024-02-03',
+      measurements: input('1'),
+    });
+    await database.db
+      .update(measurementDefinitions)
+      .set({ archivedAt: new Date() })
+      .where(eq(measurementDefinitions.id, high.id));
+    const result = await readProgress(createProgressRepository(database.db), {
+      period: 'custom',
+      startDate: '2000-01-01',
+      endDate: '2000-01-02',
+      kindId,
+    });
+    expect(result.records).toHaveLength(2);
+    expect(result.records.find((r) => r.metric.id === high.id)).toMatchObject({
+      activityId: earliest.id,
+      activityDate: '2024-02-01',
+      value: { canonical: '10' },
+    });
+    expect(result.records.find((r) => r.metric.id === low.id)).toMatchObject({
+      activityId: lowest.id,
+      value: { canonical: '1' },
+    });
+  });
+
   it('paginates qualifying goal activities using the same scope as exact progress, retaining missing and archived values', async () => {
     const variant = await variants.create(kindId, validVariant);
     const measurement = await definitions.create(kindId, {

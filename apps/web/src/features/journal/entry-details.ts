@@ -15,6 +15,10 @@ import { tagsView, readError } from './presentation.js';
 import { withReturn } from './state.js';
 import { goalDetailPath } from '../goals/state.js';
 import { journalPageStyles } from './page-styles.js';
+import { Copy, createElement } from 'lucide';
+import { navigate } from '../../routes/navigation.js';
+import { stageRepeat, type CopyOptions } from '../activities/repeat.js';
+import '../activities/repeat-dialog.js';
 
 /** Mounted only for the open row. Disconnecting cancels its independent reads. */
 export class JournalEntryDetails extends LitElement {
@@ -28,6 +32,7 @@ export class JournalEntryDetails extends LitElement {
     goals: { state: true },
     goalsError: { state: true },
     goalsLoading: { state: true },
+    repeatOpen: { state: true },
   };
   activityId = '';
   context = '/activities';
@@ -41,6 +46,12 @@ export class JournalEntryDetails extends LitElement {
   private goals: ActivityGoalsResponse | undefined;
   private goalsError: unknown;
   private goalsLoading = false;
+  private repeatOpen = false;
+  private repeatOpener?: HTMLElement;
+  private closeRepeat() {
+    this.repeatOpen = false;
+    this.repeatOpener?.focus();
+  }
   protected override willUpdate(changed: PropertyValues) {
     if (changed.has('activityId') || changed.has('api')) void this.load();
   }
@@ -199,12 +210,40 @@ export class JournalEntryDetails extends LitElement {
                       >Edit activity</a
                     >
                     <button
+                      class="quiet"
+                      @click=${(e: Event) => {
+                        this.repeatOpener = e.currentTarget as HTMLElement;
+                        this.repeatOpen = true;
+                      }}
+                    >
+                      ${createElement(Copy, { width: '16', height: '16', 'aria-hidden': 'true' })}
+                      Repeat activity
+                    </button>
+                    <button
                       class="quiet danger"
                       @click=${(event: Event) => this.dispatchEvent(new CustomEvent('request-delete', { detail: { opener: event.currentTarget }, bubbles: true, composed: true }))}
                     >
                       Delete activity
                     </button>
                   </footer>
+                  ${
+                    this.repeatOpen
+                      ? html`<activity-repeat-dialog
+                          .hasNotes=${!!a.notes}
+                          @repeat-cancel=${this.closeRepeat}
+                          @repeat-confirm=${(e: CustomEvent<CopyOptions>) => {
+                            stageRepeat(a.id, e.detail);
+                            this.closeRepeat();
+                            navigate(
+                              withReturn(
+                                `/activities/new?repeat=${encodeURIComponent(a.id)}`,
+                                this.context,
+                              ),
+                            );
+                          }}
+                        ></activity-repeat-dialog>`
+                      : nothing
+                  }
                 `
               : nothing
       }

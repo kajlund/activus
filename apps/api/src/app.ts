@@ -1,4 +1,6 @@
 import { randomUUID } from 'node:crypto';
+import { progressRoutes } from './modules/progress/routes.js';
+import type { progressSnapshot } from './modules/progress/repository.js';
 import { existsSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { serveStatic } from '@hono/node-server/serve-static';
@@ -45,6 +47,7 @@ export function createApp(
     goals?: GoalRepository;
     goalProgress?: ReturnType<typeof createGoalProgressRepository>;
     staticDir?: string | undefined;
+    progress?: ReturnType<typeof progressSnapshot>;
   } = {},
 ) {
   const app = new Hono<{ Variables: { requestId: string } }>();
@@ -107,6 +110,8 @@ export function createApp(
 
   if (dependencies.tags)
     app.route('/api/v1/tags', tagRoutes(new TagService(dependencies.tags)));
+  if (dependencies.progress)
+    app.route('/api/v1/progress', progressRoutes(dependencies.progress));
   if (dependencies.goals)
     app.route(
       '/api/v1/goals',

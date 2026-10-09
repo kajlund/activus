@@ -11,6 +11,7 @@ import { createActivityRepository } from './modules/activities/repository.js';
 import { createTagRepository } from './modules/tags/repository.js';
 import { createGoalRepository } from './modules/goals/repository.js';
 import { createGoalProgressRepository } from './modules/goals/progress-repository.js';
+import { progressSnapshot } from './modules/progress/repository.js';
 
 loadRootEnv();
 const config = requireDatabase(parseEnv(process.env));
@@ -34,6 +35,7 @@ const app = createApp(config, logger, {
   tags: createTagRepository(database.db),
   goals: createGoalRepository(database.db),
   goalProgress: createGoalProgressRepository(database.db),
+  progress: progressSnapshot(database.db),
   staticDir: config.STATIC_DIR,
 });
 const server = serve({ fetch: app.fetch, port: config.PORT }, (info) => {

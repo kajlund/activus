@@ -1,4 +1,7 @@
 import {
+  ProgressResponseSchema,
+  type ProgressQuery,
+  type ProgressResponse,
   ActivityKindSchema,
   ActivityKindListResponseSchema,
   ActivityVariantSchema,
@@ -11,6 +14,12 @@ import {
   type UpdateActivityKindRequest,
   type UpdateActivityVariantRequest,
 } from '@activus/contracts';
+export interface ProgressApi {
+  progress(
+    query: ProgressQuery,
+    signal?: AbortSignal,
+  ): Promise<ProgressResponse>;
+}
 import {
   GoalSchema,
   ActivityGoalsResponseSchema,
@@ -289,6 +298,7 @@ export function createConfigurationApi(
   JournalApi &
   GoalApi &
   GoalOverviewApi &
+  ProgressApi &
   GoalDetailApi {
   const transport =
     options.fetch ?? ((...args: Parameters<typeof fetch>) => fetch(...args));
@@ -374,6 +384,14 @@ export function createConfigurationApi(
     `/measurement-definitions/${encodeURIComponent(id)}`;
   let units: Promise<{ items: MeasurementUnit[] }> | undefined;
   return {
+    progress: (query, signal) =>
+      request(
+        `/progress?${new URLSearchParams(Object.entries(query).filter((entry): entry is [string, string] => typeof entry[1] === 'string'))}`,
+        ProgressResponseSchema,
+        'GET',
+        undefined,
+        signal,
+      ),
     goalDetail: (id, signal) =>
       request(
         `/goals/${encodeURIComponent(id)}/detail`,
